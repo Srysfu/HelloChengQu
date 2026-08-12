@@ -1,46 +1,148 @@
-# ⛩️ Nokey Voice Control
+# ⛩️ HelloChengQu
 
-以自然语言驾驭车辆 —— 面向 **小米小爱同学** 的 **LSPosed / Xposed 深度Hook 模块**，将语音口令无缝桥接为真实车控指令，让"引擎启停、车窗开合、车门上锁"在一声呼唤间完成。
+> *Speak to your car like you'd speak to a friend.*
 
-基于 **Zygisk 进程注入** 与 **双进程动态 Hook** 架构，模块在系统级拦截小爱语音意图流，静默接管并精准下发车控广播，全程不打断对话、不弹出冗余 UI —— 人车交互，从此回归纯粹。
+[![Android](https://img.shields.io/badge/Android-14%2B-34A853?style=flat&logo=android&logoColor=white)](https://developer.android.com/)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?style=flat&logo=kotlin&logoColor=white)](https://kotlinlang.org/)
+[![LSPosed](https://img.shields.io/badge/LSPosed-1.9%2B-FF6B00?style=flat)](https://github.com/LSPosed/LSPosed)
+[![Release](https://img.shields.io/badge/release-v1.0.1-0366D6?style=flat)](https://github.com/Srysfu/HelloChengQu/releases/tag/v1.0.1)
 
-> ⚠️ 请仅在合法、已取得授权的场景下使用本模块控制自有车辆，并遵守所在地区法律法规。
+**HelloChengQu** is a resilient keep-alive bridge between **XiaoAi Voice Assistant** and **ChengQu vehicle control** — an [LSPosed](https://github.com/LSPosed/LSPosed) / Xposed module that intercepts voice intents at the system level, translates them into vehicle commands, and delivers them with **ACK-confirmed broadcast retry** and **cgroup-aware process revival** for locked-screen reliability on Android 14+.
 
-## 作用
+Voice → Intent → Broadcast → Vehicle. No pop-ups. No interruption. Just the car, listening.
 
-对小米小爱同学说出车辆口令，模块会自动接管并下发控制指令：
+---
 
-- **语音解锁 / 锁车**
-- **语音引擎启动 / 关闭**
-- **语音车窗开启 / 关闭**
-- 指令成功下发后弹出「已成功」通知并播放提示音，小爱保持静默执行，不打断对话
+## Architecture
 
-模块 Hook 两个进程：小爱同学 `com.miui.voiceassist`（识别口令、下发指令、静默反馈）与车辆控制 App `com.ingeek.nokey`（下发真实车控指令），并自带进程保活，确保动态广播通道持续可用。
+```
+┌─────────────────────────┐     NokeyBypassHook      ┌───────────────────────────┐
+│  XiaoAi Voice Assistant │ ─ ─ ─ ─ [bypass] ─ ─ ─ ▶│     ChengQu Vehicle App   │
+│  com.miui.voiceassist   │                          │     com.ingeek.nokey      │
+│                          │                          │                           │
+│  VoiceAssistHook.kt     │  ──── NOKEY_CMD ────────▶│  MainHook.kt              │
+│  (transmitter)          │  ◀──── NOKEY_ACK ─────── │  (receiver)               │
+│                          │                          │                           │
+│  ┌─────────────────────┐│                          │  ┌───────────────────────┐ │
+│  │ ACK Retry Engine    ││                          │  │ Cgroup Frost Monitor  │ │
+│  │ 1.2s → 2.5s → 4.5s  ││                          │  │ root-assisted revive  │ │
+│  └─────────────────────┘│                          │  └───────────────────────┘ │
+└─────────────────────────┘                          └───────────────────────────┘
+```
 
-## 使用方法
+Two processes, one channel. The module hooks both sides of the conversation — the voice assistant that *speaks* and the vehicle app that *acts* — and guarantees delivery even when Android's power-saving cgroup freezes the receiver.
 
-1. 构建并安装 APK。
-2. 在 LSPosed 框架中启用本模块，勾选目标车辆 App `com.ingeek.nokey`，如需语音接管再勾选小爱同学 `com.miui.voiceassist`。
-3. 重启设备（或重启目标应用）使 Hook 生效。
-4. 对小爱说出车辆口令（如"启动引擎"），模块自动识别并下发命令。
+---
 
-> 也可通过任意支持显式广播的工具（如 Tasker）直接触发：
-> ```
-> Action: io.github.srysfu.nokey.hook.NOKEY_CMD
-> Extra:  command_code = 41   # 例如引擎启动
-> ```
+## ACK Retry Protocol
 
-### 适配的目标应用版本
+Locked-screen broadcast loss is a **cgroup freeze problem**, not a connectivity problem. When Android suspends `com.ingeek.nokey` into the frozen cgroup, `isAppProcessAlive()` still reports `true` — the process exists but cannot receive broadcasts. HelloChengQu detects this silent failure and recovers.
 
-当前模块 Hook 并适配了以下两个目标应用的版本号：
+| Phase | Action | Timeout | On Failure |
+|-------|--------|---------|------------|
+| **Tx** | Send `NOKEY_CMD` broadcast | — | — |
+| **Wait** | Await `NOKEY_ACK` from receiver | 1.2 s | → Retry 1 |
+| **Retry 1** | Force-wake receiver via root shell, re-send | 2.5 s | → Retry 2 |
+| **Retry 2** | Force-wake receiver via root shell, re-send | 4.5 s | → Retry 3 |
+| **Retry 3** | Final attempt with full process revival | 1.0 s | → Give-up |
+| **Give-up** | Log warning, release resources | — | — |
 
-| 目标应用 | 包名 | 版本号 |
-| -------- | ---- | ------ |
-| 小爱同学 | `com.miui.voiceassist` | `7.13.32.0016` |
-| 乘趣（车辆控制） | `com.ingeek.nokey` | `4.7.0` |
+Total coverage: up to ~9.2 seconds across three escalating retries. Each retry escalates the wake-up strategy — from gentle broadcast retransmission to aggressive `am start` via root shell — maximizing delivery probability without wasting resources.
 
-> 目标应用升级后内部类可能被重新混淆，若 Hook 失效，请按上方版本号回退到对应版本使用。
+---
 
-## License
+## Bypass Layer
 
-本项目代码仅供学习与技术交流，请遵守所在地区法律法规。
+`NokeyBypassHook.kt` operates as a transparent pass-through layer, neutralizing three categories of client-side restrictions in the vehicle control app:
+
+- **Skin validation** — intercepts theme/UI integrity checks that would reject the module as an unauthorized client
+- **Signature verification** — neutralizes APK signature checks that block modified or hooked environments
+- **Security detection** — suppresses runtime tamper-detection guards (debugger checks, hook framework detection)
+
+All three bypasses are implemented as pure Hook artifacts — no APK repackaging, no binary patching. The target app remains unmodified on disk.
+
+---
+
+## Verified
+
+| Device | ROM | Android | Scenario | Result |
+|--------|-----|---------|----------|--------|
+| Redmi Note 10 Pro | HyperOS (MIUI) | 14 | Locked-screen voice command — window open/close | ✅ |
+| Redmi Note 10 Pro | HyperOS (MIUI) | 14 | Active-screen voice command — engine start/stop | ✅ |
+| Redmi Note 10 Pro | HyperOS (MIUI) | 14 | Doze-mode broadcast recovery via ACK retry | ✅ |
+
+> Verification was performed on a production device under real-world conditions — screen-off, cgroup-frozen, with no USB debugging connection.
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Android 14+ device with **root access** (Magisk / KernelSU)
+- [LSPosed](https://github.com/LSPosed/LSPosed) 1.9+ installed and active
+- The target vehicle control app (`com.ingeek.nokey`) must be installed
+
+### Target App Versions
+
+| Application | Package | Version |
+|-------------|---------|---------|
+| XiaoAi Voice Assistant | `com.miui.voiceassist` | `7.13.32.0016` |
+| ChengQu (vehicle control) | `com.ingeek.nokey` | `4.7.0` |
+
+> ⚡ *Class names are obfuscated per-version. Upgrading the target app may break hooks. Pin to the versions above.*
+
+### Installation
+
+1. Build the APK or download the [latest signed release](https://github.com/Srysfu/HelloChengQu/releases/latest).
+2. Install the APK on your device.
+3. In LSPosed Manager, enable the module and check both target apps:
+   - `com.miui.voiceassist` (voice interception)
+   - `com.ingeek.nokey` (command delivery)
+4. Reboot the device, or force-stop both target apps to apply hooks.
+
+### External Broadcast Trigger
+
+Any automation tool (Tasker, MacroDroid, custom scripts) can issue vehicle commands directly:
+
+```
+Action:  io.github.srysfu.nokey.hook.NOKEY_CMD
+Extra:   command_code = 41          # e.g. engine start
+```
+
+Command codes follow the same mapping as voice-triggered commands. No custom permissions required — the broadcast is scoped to the module's internal receiver.
+
+---
+
+## Project Structure
+
+```
+HelloChengQu/
+├── app/
+│   ├── build.gradle.kts
+│   └── src/main/java/io/github/srysfu/nokey/
+│       ├── hook/
+│       │   ├── MainHook.kt              # Receiver — NOKEY_CMD dispatch + ACK reply
+│       │   ├── VoiceAssistHook.kt       # Transmitter — voice intent interception + ACK retry engine
+│       │   └── NokeyBypassHook.kt       # Bypass layer — skin / signature / security
+│       ├── utils/
+│       │   ├── CommandDispatcher.kt     # NL → command resolution
+│       │   └── SulistHelper.kt          # Root-shell utilities
+│       └── BuildConfig.kt
+├── FROZEN_BASELINE.md                   # Design rationale — the frozen-cgroup problem
+└── README.md
+```
+
+---
+
+## Design Rationale
+
+See [`FROZEN_BASELINE.md`](./FROZEN_BASELINE.md) for a technical deep-dive into the cgroup freeze problem, the failure modes of conventional broadcast delivery, and the architectural decisions behind the ACK retry protocol.
+
+---
+
+## License & Disclaimer
+
+This project is shared for **educational and interoperability research** purposes. Use it only with vehicles you own or are authorized to control, and in compliance with local laws and regulations.
+
+The authors assume no liability for misuse. This is a tool — what you build with it is your own craft.
