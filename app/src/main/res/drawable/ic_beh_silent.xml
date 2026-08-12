@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 全静默/静音铃铛(带斜杠)图标 -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M12,22c1.1,0 2,-0.9 2,-2h-4C10,21.1 10.9,22 12,22zM18,16v-5c0,-3.07 -1.63,-5.64 -4.5,-6.32V4c0,-0.83 -0.67,-1.5 -1.5,-1.5S10.5,3.17 10.5,4v0.68C9.78,4.89 9.13,5.22 8.54,5.64L18,15.1V16zM18.9,19.1l-1.07,-1.07 -13.5,-13.5 -1.09,1.09 2.12,2.12C5.12,8.19 5,9.08 5,10v6l-2,2v1h16.17l1.73,1.73L18.9,19.1z"/>
+</vector>
