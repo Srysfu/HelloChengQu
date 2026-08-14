@@ -70,8 +70,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -224,6 +230,12 @@ fun ConfigScreen() {
     // 「全静默执行」开关（档位 C）：开启后小爱静默执行指令，屏幕无任何文字、无提示音（连「已成功」气泡都不渲染）
     var silentMode by remember { mutableStateOf(NokeyConfig.loadSilentMode(force = true)) }
 
+    // 「绕过校验」开关：开启后绕过乘趣签名校验和安全环境检测（Root/Hook/调试器/模拟器等）
+    var bypassCheck by remember { mutableStateOf(NokeyConfig.loadBypassCheck(force = true)) }
+
+    // 「皮肤解锁」开关：开启后解锁乘趣所有皮肤（无需购买即可使用）
+    var skinUnlock by remember { mutableStateOf(NokeyConfig.loadSkinUnlock(force = true)) }
+
     // 顶部命令图标选中态：默认选中第 0 项
     var selectedCommandIndex by remember { mutableStateOf(0) }
     // 底部反馈方块页签：默认提示音
@@ -237,6 +249,8 @@ fun ConfigScreen() {
     var savingHideRecents by remember { mutableStateOf(false) }
     var savingKeepAlive by remember { mutableStateOf(false) }
     var savingSilentMode by remember { mutableStateOf(false) }
+    var savingBypassCheck by remember { mutableStateOf(false) }
+    var savingSkinUnlock by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
     var toneStatus by remember { mutableStateOf("") }
     var textStatus by remember { mutableStateOf("") }
@@ -323,6 +337,14 @@ fun ConfigScreen() {
         }
     }
 
+    // 每次进入界面，强制从配置重新同步「绕过校验」/「皮肤解锁」开关显示状态，
+    // 避免因外部（hook 端/其它进程）改动配置后 UI 仍停留在 remember 旧值，
+    // 导致用户看到的开关状态与实际配置不一致而误操作。
+    LaunchedEffect(Unit) {
+        bypassCheck = NokeyConfig.loadBypassCheck(force = true)
+        skinUnlock = NokeyConfig.loadSkinUnlock(force = true)
+    }
+
     // 玻璃取样：layerBackdrop 能取样到背景图片的真实像素
     val glassBackdrop = rememberLayerBackdrop()
 
@@ -372,7 +394,7 @@ fun ConfigScreen() {
             ) {
             Spacer(Modifier.height(4.dp))
 
-            // ============ 标题下方：行为开关条（隐藏后台卡片 / 保活 / 全静默） ============
+            // ============ 标题下方：行为开关条（隐藏后台卡片 / 保活 / 全静默 / 绕过校验 / 皮肤解锁） ============
             BehaviorSwitchBar(
                 backdrop = glassBackdrop,
                 hideRecents = hideRecents,
@@ -423,6 +445,42 @@ fun ConfigScreen() {
                             Toast.makeText(context, "设置保存失败，请检查 root 权限", Toast.LENGTH_SHORT).show()
                             // 保存失败回滚开关态，与落盘配置保持一致
                             silentMode = NokeyConfig.loadSilentMode(force = true)
+                        }
+                    }
+                },
+                bypassCheck = bypassCheck,
+                savingBypassCheck = savingBypassCheck,
+                onBypassCheck = { on ->
+                    bypassCheck = on
+                    savingBypassCheck = true
+                    scope.launch {
+                        val ok = writeConfig(bypassCheck = on)
+                        savingBypassCheck = false
+                        if (ok) {
+                            Toast.makeText(context, if (on) "已开启：绕过校验，正在重启乘趣…" else "已关闭：绕过校验，正在重启乘趣…", Toast.LENGTH_SHORT).show()
+                            restartNokey()
+                        } else {
+                            Toast.makeText(context, "设置保存失败，请检查 root 权限", Toast.LENGTH_SHORT).show()
+                            // 保存失败回滚开关态，与落盘配置保持一致
+                            bypassCheck = NokeyConfig.loadBypassCheck(force = true)
+                        }
+                    }
+                },
+                skinUnlock = skinUnlock,
+                savingSkinUnlock = savingSkinUnlock,
+                onSkinUnlock = { on ->
+                    skinUnlock = on
+                    savingSkinUnlock = true
+                    scope.launch {
+                        val ok = writeConfig(skinUnlock = on)
+                        savingSkinUnlock = false
+                        if (ok) {
+                            Toast.makeText(context, if (on) "已开启：皮肤解锁，正在重启乘趣…" else "已关闭：皮肤解锁，正在重启乘趣…", Toast.LENGTH_SHORT).show()
+                            restartNokey()
+                        } else {
+                            Toast.makeText(context, "设置保存失败，请检查 root 权限", Toast.LENGTH_SHORT).show()
+                            // 保存失败回滚开关态，与落盘配置保持一致
+                            skinUnlock = NokeyConfig.loadSkinUnlock(force = true)
                         }
                     }
                 }
@@ -611,8 +669,70 @@ fun ConfigScreen() {
 }
 
 /**
- * 标题下方的行为开关条：隐藏后台卡片 / 保活 / 全静默 三个开关。
- * 设计为一张圆角浅底卡片，内部三个单元均分宽度（weight=1f），
+ * 自绘「盾牌」图标：代表绕过校验（安全/签名）。
+ * 不依赖 res 资源，避免新增资源文件改动资源 ID 导致旧底座闪退。
+ */
+@Composable
+private fun ShieldIcon(color: Color) {
+    Canvas(modifier = Modifier.height(20.dp).width(20.dp)) {
+        val w = this.size.width
+        val h = this.size.height
+        val stroke = Stroke(width = 1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // 盾牌外廓
+        val shield = Path().apply {
+            moveTo(w * 0.5f, h * 0.12f)
+            lineTo(w * 0.84f, h * 0.22f)
+            lineTo(w * 0.84f, h * 0.5f)
+            cubicTo(w * 0.84f, h * 0.75f, w * 0.68f, h * 0.9f, w * 0.5f, h * 0.96f)
+            cubicTo(w * 0.32f, h * 0.9f, w * 0.16f, h * 0.75f, w * 0.16f, h * 0.5f)
+            lineTo(w * 0.16f, h * 0.22f)
+            close()
+        }
+        drawPath(shield, color = color, style = stroke)
+        // 对勾
+        val check = Path().apply {
+            moveTo(w * 0.38f, h * 0.52f)
+            lineTo(w * 0.47f, h * 0.61f)
+            lineTo(w * 0.62f, h * 0.42f)
+        }
+        drawPath(check, color = color, style = stroke)
+    }
+}
+
+/**
+ * 自绘「调色板」图标：代表皮肤解锁。不依赖 res 资源。
+ */
+@Composable
+private fun PaletteIcon(color: Color) {
+    Canvas(modifier = Modifier.height(20.dp).width(20.dp)) {
+        val w = this.size.width
+        val h = this.size.height
+        val stroke = Stroke(width = 1.6f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // 调色板主体（左下缺角更像调色盘）
+        val body = Path().apply {
+            moveTo(w * 0.5f, h * 0.1f)
+            cubicTo(w * 0.24f, h * 0.1f, w * 0.12f, h * 0.32f, w * 0.12f, h * 0.5f)
+            cubicTo(w * 0.12f, h * 0.68f, w * 0.26f, h * 0.82f, w * 0.4f, h * 0.9f)
+            lineTo(w * 0.4f, h * 0.8f)
+            cubicTo(w * 0.4f, h * 0.74f, w * 0.45f, h * 0.68f, w * 0.52f, h * 0.68f)
+            lineTo(w * 0.62f, h * 0.68f)
+            cubicTo(w * 0.7f, h * 0.68f, w * 0.77f, h * 0.6f, w * 0.77f, h * 0.53f)
+            cubicTo(w * 0.82f, h * 0.44f, w * 0.88f, h * 0.4f, w * 0.88f, h * 0.32f)
+            cubicTo(w * 0.88f, h * 0.2f, w * 0.72f, h * 0.1f, w * 0.5f, h * 0.1f)
+            close()
+        }
+        drawPath(body, color = color, style = stroke)
+        // 三个色点
+        val radius = 1.4f * density
+        drawCircle(color = color, radius = radius, center = Offset(w * 0.30f, h * 0.36f))
+        drawCircle(color = color, radius = radius, center = Offset(w * 0.46f, h * 0.30f))
+        drawCircle(color = color, radius = radius, center = Offset(w * 0.60f, h * 0.36f))
+    }
+}
+
+/**
+ * 标题下方的行为开关条：隐藏后台卡片 / 保活 / 全静默 / 绕过校验 / 皮肤解锁 五个开关。
+ * 设计为一张圆角浅底卡片，内部五个单元均分宽度（weight=1f），
  * 每个单元竖向排列「图标 + 标签 + 开关」，视觉统一、不重叠。
  */
 @Composable
@@ -626,8 +746,15 @@ private fun BehaviorSwitchBar(
     onKeepAlive: (Boolean) -> Unit,
     silentMode: Boolean,
     savingSilentMode: Boolean,
-    onSilentMode: (Boolean) -> Unit
+    onSilentMode: (Boolean) -> Unit,
+    bypassCheck: Boolean,
+    savingBypassCheck: Boolean,
+    onBypassCheck: (Boolean) -> Unit,
+    skinUnlock: Boolean,
+    savingSkinUnlock: Boolean,
+    onSkinUnlock: (Boolean) -> Unit
 ) {
+    val adaptive = LocalAdaptiveTextColors.current
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.15f)),
@@ -661,6 +788,24 @@ private fun BehaviorSwitchBar(
                 onToggle = onSilentMode,
                 modifier = Modifier.weight(1f)
             )
+            SwitchCell(
+                iconRes = R.drawable.ic_beh_keepalive,
+                label = "绕过校验",
+                checked = bypassCheck,
+                saving = savingBypassCheck,
+                onToggle = onBypassCheck,
+                modifier = Modifier.weight(1f),
+                customIcon = { ShieldIcon(adaptive.icon) }
+            )
+            SwitchCell(
+                iconRes = R.drawable.ic_beh_keepalive,
+                label = "皮肤解锁",
+                checked = skinUnlock,
+                saving = savingSkinUnlock,
+                onToggle = onSkinUnlock,
+                modifier = Modifier.weight(1f),
+                customIcon = { PaletteIcon(adaptive.icon) }
+            )
         }
     }
 }
@@ -675,7 +820,9 @@ private fun SwitchCell(
     checked: Boolean,
     saving: Boolean,
     onToggle: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // 自绘图标：不依赖 res 资源，避免为加图标而改动资源 ID 导致旧底座闪退
+    customIcon: (@Composable () -> Unit)? = null
 ) {
     val adaptive = LocalAdaptiveTextColors.current
     Column(
@@ -683,12 +830,18 @@ private fun SwitchCell(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = label,
-            tint = adaptive.icon,
-            modifier = Modifier.height(22.dp).width(22.dp)
-        )
+        if (customIcon != null) {
+            Box(modifier = Modifier.height(22.dp).width(22.dp), contentAlignment = Alignment.Center) {
+                customIcon()
+            }
+        } else {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = label,
+                tint = adaptive.icon,
+                modifier = Modifier.height(22.dp).width(22.dp)
+            )
+        }
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
@@ -1335,7 +1488,9 @@ private suspend fun writeConfig(
     successTexts: List<String>? = null,
     hideRecents: Boolean? = null,
     keepAlive: Boolean? = null,
-    silentMode: Boolean? = null
+    silentMode: Boolean? = null,
+    bypassCheck: Boolean? = null,
+    skinUnlock: Boolean? = null
 ): Boolean = withContext(Dispatchers.IO) {
     val cmdList = commands?.map {
         CommandMatcher.Command(
@@ -1348,7 +1503,7 @@ private suspend fun writeConfig(
     }
 
     // 1) 先尝试直接写（NokeyConfig.writeTo 内部会读现有配置做合并、刷新缓存）
-    if (NokeyConfig.writeTo(commands = cmdList, toneUri = toneUri, successTexts = successTexts, hideRecents = hideRecents, keepAlive = keepAlive, silentMode = silentMode)) {
+    if (NokeyConfig.writeTo(commands = cmdList, toneUri = toneUri, successTexts = successTexts, hideRecents = hideRecents, keepAlive = keepAlive, silentMode = silentMode, bypassCheck = bypassCheck, skinUnlock = skinUnlock)) {
         return@withContext true
     }
 
@@ -1361,7 +1516,9 @@ private suspend fun writeConfig(
         val mergedHideRecents = hideRecents ?: full?.hideRecents ?: false
         val mergedKeepAlive = keepAlive ?: full?.keepAlive ?: false
         val mergedSilentMode = silentMode ?: full?.silentMode ?: false
-        val json = NokeyConfig.toJson(mergedCommands, mergedTone, mergedTexts, mergedHideRecents, mergedKeepAlive, mergedSilentMode)
+        val mergedBypassCheck = bypassCheck ?: full?.bypassCheck ?: false
+        val mergedSkinUnlock = skinUnlock ?: full?.skinUnlock ?: false
+        val json = NokeyConfig.toJson(mergedCommands, mergedTone, mergedTexts, mergedHideRecents, mergedKeepAlive, mergedSilentMode, mergedBypassCheck, mergedSkinUnlock)
 
         val escaped = json
             .replace("\\", "\\\\")
@@ -1378,6 +1535,21 @@ private suspend fun writeConfig(
         return@withContext false
     } catch (t: Throwable) {
         return@withContext false
+    }
+}
+
+/**
+ * 强制重启乘趣车控进程，让改动的绕过校验/皮肤解锁配置立即生效。
+ * 通过 root shell 执行 am force-stop 后重新启动应用入口 Activity。
+ */
+private fun restartNokey() {
+    try {
+        // 乘趣真实启动入口（aapt/解析确认）：com.ingeek.nokey/com.ingeek.android.app.SplashPageActivity
+        val launcher = "com.ingeek.nokey/com.ingeek.android.app.SplashPageActivity"
+        val cmd = "am force-stop com.ingeek.nokey && sleep 1 && am start -n $launcher"
+        Runtime.getRuntime().exec(arrayOf("su", "-c", cmd)).waitFor()
+    } catch (t: Throwable) {
+        // 重启失败静默，配置本身已保存，用户可手动重启
     }
 }
 
