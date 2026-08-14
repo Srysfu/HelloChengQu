@@ -5,14 +5,14 @@ plugins {
 
 android {
     namespace = "io.github.srysfu.nokey.hook"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "io.github.srysfu.nokey.hook"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -74,4 +74,9 @@ dependencies {
     // ---- LSPosed/Xposed API（compileOnly：仅编译期可见，不打包进 APK）----
     compileOnly("de.robv.android.xposed:api:82")
     compileOnly("de.robv.android.xposed:api:82:sources")
+
+    // ---- Liquid Glass（Backdrop，AndroidX 版 1.0.6，含 lens 折射效果）----
+    implementation("io.github.kyant0:backdrop:1.0.6")
+
+    // ---- Coil 图片加载库（Compose 版，支持网络图片、自动缓存、异步加载）----
 }

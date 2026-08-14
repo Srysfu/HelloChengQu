@@ -17,6 +17,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,6 +39,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -45,7 +47,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -64,10 +68,76 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
 import io.github.srysfu.nokey.hook.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private data class AdaptiveTextColors(
+    val primary: Color,
+    val secondary: Color,
+    val muted: Color,
+    val icon: Color,
+    val isLightBackground: Boolean
+)
+
+private val LocalAdaptiveTextColors = compositionLocalOf {
+    AdaptiveTextColors(
+        primary = Color.White,
+        secondary = Color.White.copy(alpha = 0.82f),
+        muted = Color.White.copy(alpha = 0.68f),
+        icon = Color.White,
+        isLightBackground = false
+    )
+}
+
+private fun bitmapLuminance(bitmap: android.graphics.Bitmap): Float {
+    val sample = android.graphics.Bitmap.createScaledBitmap(bitmap, 1, 1, true)
+    val pixel = sample.getPixel(0, 0)
+    if (sample !== bitmap) sample.recycle()
+    val r = android.graphics.Color.red(pixel) / 255f
+    val g = android.graphics.Color.green(pixel) / 255f
+    val b = android.graphics.Color.blue(pixel) / 255f
+    return 0.2126f * r + 0.7152f * g + 0.0722f * b
+}
+
+private fun adaptiveColors(bitmap: android.graphics.Bitmap?): AdaptiveTextColors {
+    val isLight = bitmap != null && bitmapLuminance(bitmap) >= 0.52f
+    return if (isLight) {
+        AdaptiveTextColors(
+            primary = Color(0xFF111111),
+            secondary = Color(0xFF222222).copy(alpha = 0.86f),
+            muted = Color(0xFF333333).copy(alpha = 0.76f),
+            icon = Color(0xFF111111),
+            isLightBackground = true
+        )
+    } else {
+        AdaptiveTextColors(
+            primary = Color.White,
+            secondary = Color.White.copy(alpha = 0.88f),
+            muted = Color.White.copy(alpha = 0.74f),
+            icon = Color.White,
+            isLightBackground = false
+        )
+    }
+}
 
 /**
  * 模块配置界面：允许用户自定义每条车辆命令的唤醒词、成功提示音与屏幕文案。
@@ -134,6 +204,7 @@ fun ConfigScreen() {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    // 初始词表
     // 初始词表：优先读共享配置，否则用默认词表
     val commands = remember {
         val base = NokeyConfig.loadCustom(force = true) ?: CommandMatcher.DEFAULT_COMMANDS
@@ -159,6 +230,12 @@ fun ConfigScreen() {
     // 「全静默执行」开关（档位 C）：开启后小爱静默执行指令，屏幕无任何文字、无提示音（连「已成功」气泡都不渲染）
     var silentMode by remember { mutableStateOf(NokeyConfig.loadSilentMode(force = true)) }
 
+    // 「绕过校验」开关：开启后绕过乘趣签名校验和安全环境检测（Root/Hook/调试器/模拟器等）
+    var bypassCheck by remember { mutableStateOf(NokeyConfig.loadBypassCheck(force = true)) }
+
+    // 「皮肤解锁」开关：开启后解锁乘趣所有皮肤（无需购买即可使用）
+    var skinUnlock by remember { mutableStateOf(NokeyConfig.loadSkinUnlock(force = true)) }
+
     // 顶部命令图标选中态：默认选中第 0 项
     var selectedCommandIndex by remember { mutableStateOf(0) }
     // 底部反馈方块页签：默认提示音
@@ -172,6 +249,8 @@ fun ConfigScreen() {
     var savingHideRecents by remember { mutableStateOf(false) }
     var savingKeepAlive by remember { mutableStateOf(false) }
     var savingSilentMode by remember { mutableStateOf(false) }
+    var savingBypassCheck by remember { mutableStateOf(false) }
+    var savingSkinUnlock by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
     var toneStatus by remember { mutableStateOf("") }
     var textStatus by remember { mutableStateOf("") }
@@ -225,24 +304,99 @@ fun ConfigScreen() {
         }
     }
 
-    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-        Column(
+    // 原生下载背景图（手动处理 HTTPS→HTTP 跨协议 302 重定向）
+    var bgBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    LaunchedEffect(Unit) {
+        bgBitmap = withContext(Dispatchers.IO) {
+            try {
+                var url = "https://api.suyanw.cn/api/ksxjj.php"
+                var redirects = 0
+                while (redirects < 5) {
+                    val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                    conn.instanceFollowRedirects = false
+                    conn.connectTimeout = 10000
+                    conn.readTimeout = 10000
+                    conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
+                    conn.connect()
+                    val code = conn.responseCode
+                    if (code in 301..303 || code == 307 || code == 308) {
+                        url = conn.getHeaderField("Location") ?: break
+                        conn.disconnect()
+                        redirects++
+                    } else {
+                        val input = conn.inputStream
+                        val bmp = android.graphics.BitmapFactory.decodeStream(input)
+                        conn.disconnect()
+                        return@withContext bmp
+                    }
+                }
+                null
+            } catch (t: Throwable) {
+                null
+            }
+        }
+    }
+
+    // 每次进入界面，强制从配置重新同步「绕过校验」/「皮肤解锁」开关显示状态，
+    // 避免因外部（hook 端/其它进程）改动配置后 UI 仍停留在 remember 旧值，
+    // 导致用户看到的开关状态与实际配置不一致而误操作。
+    LaunchedEffect(Unit) {
+        bypassCheck = NokeyConfig.loadBypassCheck(force = true)
+        skinUnlock = NokeyConfig.loadSkinUnlock(force = true)
+    }
+
+    // 玻璃取样：layerBackdrop 能取样到背景图片的真实像素
+    val glassBackdrop = rememberLayerBackdrop()
+
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .layerBackdrop(glassBackdrop)
+    ) {
+        // ============ 渐变背景（最底层，图片加载失败时兜底） ============
+        Box(
             modifier = Modifier
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Spacer(Modifier.height(8.dp))
+                .fillMaxSize()
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF1a237e), // 深蓝
+                            Color(0xFF4a148c)  // 深紫
+                        )
+                    )
+                )
+        )
 
-            Text(
-                text = "Hello乘趣 · 车辆语音控制",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
+        // ============ 网络背景图（手动 HTTP 下载，成功时盖住渐变） ============
+        val bmp = bgBitmap
+        if (bmp != null) {
+            Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
             )
+        }
 
-            // ============ 标题下方：行为开关条（隐藏后台卡片 / 保活 / 全静默） ============
+        // ============ 前景内容（玻璃卡片叠加在图片上） ============
+        val adaptiveTextColors = remember(bmp) { adaptiveColors(bmp) }
+        val adaptive = adaptiveTextColors
+        CompositionLocalProvider(LocalAdaptiveTextColors provides adaptiveTextColors) {
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                containerColor = Color.Transparent
+            ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .padding(horizontal = 16.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+            Spacer(Modifier.height(4.dp))
+
+            // ============ 标题下方：行为开关条（隐藏后台卡片 / 保活 / 全静默 / 绕过校验 / 皮肤解锁） ============
             BehaviorSwitchBar(
+                backdrop = glassBackdrop,
                 hideRecents = hideRecents,
                 savingHideRecents = savingHideRecents,
                 onHideRecents = { on ->
@@ -293,13 +447,49 @@ fun ConfigScreen() {
                             silentMode = NokeyConfig.loadSilentMode(force = true)
                         }
                     }
+                },
+                bypassCheck = bypassCheck,
+                savingBypassCheck = savingBypassCheck,
+                onBypassCheck = { on ->
+                    bypassCheck = on
+                    savingBypassCheck = true
+                    scope.launch {
+                        val ok = writeConfig(bypassCheck = on)
+                        savingBypassCheck = false
+                        if (ok) {
+                            Toast.makeText(context, if (on) "已开启：绕过校验，正在重启乘趣…" else "已关闭：绕过校验，正在重启乘趣…", Toast.LENGTH_SHORT).show()
+                            restartNokey()
+                        } else {
+                            Toast.makeText(context, "设置保存失败，请检查 root 权限", Toast.LENGTH_SHORT).show()
+                            // 保存失败回滚开关态，与落盘配置保持一致
+                            bypassCheck = NokeyConfig.loadBypassCheck(force = true)
+                        }
+                    }
+                },
+                skinUnlock = skinUnlock,
+                savingSkinUnlock = savingSkinUnlock,
+                onSkinUnlock = { on ->
+                    skinUnlock = on
+                    savingSkinUnlock = true
+                    scope.launch {
+                        val ok = writeConfig(skinUnlock = on)
+                        savingSkinUnlock = false
+                        if (ok) {
+                            Toast.makeText(context, if (on) "已开启：皮肤解锁，正在重启乘趣…" else "已关闭：皮肤解锁，正在重启乘趣…", Toast.LENGTH_SHORT).show()
+                            restartNokey()
+                        } else {
+                            Toast.makeText(context, "设置保存失败，请检查 root 权限", Toast.LENGTH_SHORT).show()
+                            // 保存失败回滚开关态，与落盘配置保持一致
+                            skinUnlock = NokeyConfig.loadSkinUnlock(force = true)
+                        }
+                    }
                 }
             )
 
             Text(
-                text = "点击顶部命令图标编辑该命令的唤醒词；底部「反馈设置」可自定义提示音与「已成功」文案。各部分独立保存，小爱下次响应时自动生效（无需重启）。",
+                text = "点击命令图标编辑该命令的唤醒词；底部「反馈设置」可自定义提示音与「已成功」文案。各部分独立保存，小爱下次响应时自动生效（无需重启）。",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = adaptive.secondary
             )
 
             // ============ 顶部一排 6 个命令图标 ============
@@ -366,6 +556,7 @@ fun ConfigScreen() {
 
             // ============ 底部「反馈设置」方块（提示音 + 成功文案双页签，可折叠） ============
             BottomFeatureBlock(
+                backdrop = glassBackdrop,
                 expanded = feedbackExpanded,
                 onToggle = { feedbackExpanded = !feedbackExpanded },
                 tab = bottomTab,
@@ -458,7 +649,7 @@ fun ConfigScreen() {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_github),
                     contentDescription = "GitHub",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = adaptive.muted,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(Modifier.width(6.dp))
@@ -466,22 +657,87 @@ fun ConfigScreen() {
                     text = "@Srysfu",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = adaptive.muted
                 )
             }
 
             Spacer(Modifier.height(24.dp))
+            }
+            }
         }
     }
 }
 
 /**
- * 标题下方的行为开关条：隐藏后台卡片 / 保活 / 全静默 三个开关。
- * 设计为一张圆角浅底卡片，内部三个单元均分宽度（weight=1f），
+ * 自绘「盾牌」图标：代表绕过校验（安全/签名）。
+ * 不依赖 res 资源，避免新增资源文件改动资源 ID 导致旧底座闪退。
+ */
+@Composable
+private fun ShieldIcon(color: Color) {
+    Canvas(modifier = Modifier.height(20.dp).width(20.dp)) {
+        val w = this.size.width
+        val h = this.size.height
+        val stroke = Stroke(width = 1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // 盾牌外廓
+        val shield = Path().apply {
+            moveTo(w * 0.5f, h * 0.12f)
+            lineTo(w * 0.84f, h * 0.22f)
+            lineTo(w * 0.84f, h * 0.5f)
+            cubicTo(w * 0.84f, h * 0.75f, w * 0.68f, h * 0.9f, w * 0.5f, h * 0.96f)
+            cubicTo(w * 0.32f, h * 0.9f, w * 0.16f, h * 0.75f, w * 0.16f, h * 0.5f)
+            lineTo(w * 0.16f, h * 0.22f)
+            close()
+        }
+        drawPath(shield, color = color, style = stroke)
+        // 对勾
+        val check = Path().apply {
+            moveTo(w * 0.38f, h * 0.52f)
+            lineTo(w * 0.47f, h * 0.61f)
+            lineTo(w * 0.62f, h * 0.42f)
+        }
+        drawPath(check, color = color, style = stroke)
+    }
+}
+
+/**
+ * 自绘「调色板」图标：代表皮肤解锁。不依赖 res 资源。
+ */
+@Composable
+private fun PaletteIcon(color: Color) {
+    Canvas(modifier = Modifier.height(20.dp).width(20.dp)) {
+        val w = this.size.width
+        val h = this.size.height
+        val stroke = Stroke(width = 1.6f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // 调色板主体（左下缺角更像调色盘）
+        val body = Path().apply {
+            moveTo(w * 0.5f, h * 0.1f)
+            cubicTo(w * 0.24f, h * 0.1f, w * 0.12f, h * 0.32f, w * 0.12f, h * 0.5f)
+            cubicTo(w * 0.12f, h * 0.68f, w * 0.26f, h * 0.82f, w * 0.4f, h * 0.9f)
+            lineTo(w * 0.4f, h * 0.8f)
+            cubicTo(w * 0.4f, h * 0.74f, w * 0.45f, h * 0.68f, w * 0.52f, h * 0.68f)
+            lineTo(w * 0.62f, h * 0.68f)
+            cubicTo(w * 0.7f, h * 0.68f, w * 0.77f, h * 0.6f, w * 0.77f, h * 0.53f)
+            cubicTo(w * 0.82f, h * 0.44f, w * 0.88f, h * 0.4f, w * 0.88f, h * 0.32f)
+            cubicTo(w * 0.88f, h * 0.2f, w * 0.72f, h * 0.1f, w * 0.5f, h * 0.1f)
+            close()
+        }
+        drawPath(body, color = color, style = stroke)
+        // 三个色点
+        val radius = 1.4f * density
+        drawCircle(color = color, radius = radius, center = Offset(w * 0.30f, h * 0.36f))
+        drawCircle(color = color, radius = radius, center = Offset(w * 0.46f, h * 0.30f))
+        drawCircle(color = color, radius = radius, center = Offset(w * 0.60f, h * 0.36f))
+    }
+}
+
+/**
+ * 标题下方的行为开关条：隐藏后台卡片 / 保活 / 全静默 / 绕过校验 / 皮肤解锁 五个开关。
+ * 设计为一张圆角浅底卡片，内部五个单元均分宽度（weight=1f），
  * 每个单元竖向排列「图标 + 标签 + 开关」，视觉统一、不重叠。
  */
 @Composable
 private fun BehaviorSwitchBar(
+    backdrop: Backdrop,
     hideRecents: Boolean,
     savingHideRecents: Boolean,
     onHideRecents: (Boolean) -> Unit,
@@ -490,13 +746,19 @@ private fun BehaviorSwitchBar(
     onKeepAlive: (Boolean) -> Unit,
     silentMode: Boolean,
     savingSilentMode: Boolean,
-    onSilentMode: (Boolean) -> Unit
+    onSilentMode: (Boolean) -> Unit,
+    bypassCheck: Boolean,
+    savingBypassCheck: Boolean,
+    onBypassCheck: (Boolean) -> Unit,
+    skinUnlock: Boolean,
+    savingSkinUnlock: Boolean,
+    onSkinUnlock: (Boolean) -> Unit
 ) {
-    Surface(
+    val adaptive = LocalAdaptiveTextColors.current
+    Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.15f)),
+        shape = RoundedCornerShape(20.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
@@ -526,6 +788,24 @@ private fun BehaviorSwitchBar(
                 onToggle = onSilentMode,
                 modifier = Modifier.weight(1f)
             )
+            SwitchCell(
+                iconRes = R.drawable.ic_beh_keepalive,
+                label = "绕过校验",
+                checked = bypassCheck,
+                saving = savingBypassCheck,
+                onToggle = onBypassCheck,
+                modifier = Modifier.weight(1f),
+                customIcon = { ShieldIcon(adaptive.icon) }
+            )
+            SwitchCell(
+                iconRes = R.drawable.ic_beh_keepalive,
+                label = "皮肤解锁",
+                checked = skinUnlock,
+                saving = savingSkinUnlock,
+                onToggle = onSkinUnlock,
+                modifier = Modifier.weight(1f),
+                customIcon = { PaletteIcon(adaptive.icon) }
+            )
         }
     }
 }
@@ -540,24 +820,33 @@ private fun SwitchCell(
     checked: Boolean,
     saving: Boolean,
     onToggle: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // 自绘图标：不依赖 res 资源，避免为加图标而改动资源 ID 导致旧底座闪退
+    customIcon: (@Composable () -> Unit)? = null
 ) {
+    val adaptive = LocalAdaptiveTextColors.current
     Column(
         modifier = modifier.padding(horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = label,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.height(22.dp).width(22.dp)
-        )
+        if (customIcon != null) {
+            Box(modifier = Modifier.height(22.dp).width(22.dp), contentAlignment = Alignment.Center) {
+                customIcon()
+            }
+        } else {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = label,
+                tint = adaptive.icon,
+                modifier = Modifier.height(22.dp).width(22.dp)
+            )
+        }
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = adaptive.primary,
             textAlign = TextAlign.Center,
             maxLines = 1,
             softWrap = false
@@ -580,6 +869,7 @@ private fun CommandIconRow(
     selectedIndex: Int,
     onSelect: (Int) -> Unit
 ) {
+    val adaptive = LocalAdaptiveTextColors.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -587,9 +877,9 @@ private fun CommandIconRow(
         commands.forEachIndexed { index, cmd ->
             val selected = index == selectedIndex
             val spec = COMMAND_ICONS[cmd.name]
-            val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-            val fg = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-            val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+            val bg = Color.Transparent
+            val fg = if (selected) adaptive.primary else adaptive.secondary
+            val borderColor = Color.Transparent
 
             Column(
                 modifier = Modifier
@@ -640,6 +930,7 @@ private fun CommandIconRow(
  */
 @Composable
 private fun BottomFeatureBlock(
+    backdrop: Backdrop,
     expanded: Boolean,
     onToggle: () -> Unit,
     tab: FeedbackTab,
@@ -662,6 +953,7 @@ private fun BottomFeatureBlock(
     textStatus: String,
     context: android.content.Context
 ) {
+    val adaptive = LocalAdaptiveTextColors.current
     // 收起时的摘要：优先展示提示音名称，其次成功文案条数
     val summary = when {
         selectedToneName != null -> "提示音：$selectedToneName"
@@ -675,10 +967,11 @@ private fun BottomFeatureBlock(
         label = "feedbackArrow"
     )
 
+    val glassSurface = Color.White.copy(alpha = 0.15f)
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        shape = RoundedCornerShape(18.dp)
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.15f)),
+        shape = RoundedCornerShape(24.dp)
     ) {
         Column(Modifier.padding(vertical = 6.dp)) {
             // ===== 折叠头（可点击，点击展开/收起） =====
@@ -703,13 +996,13 @@ private fun BottomFeatureBlock(
                             text = "反馈设置",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = adaptive.primary
                         )
                         if (!expanded) {
                             Text(
                                 text = summary,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = adaptive.muted,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -719,14 +1012,14 @@ private fun BottomFeatureBlock(
                     Text(
                         text = if (expanded) "收起" else "展开",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = adaptive.muted,
                         fontWeight = FontWeight.Medium
                     )
                     Spacer(Modifier.width(4.dp))
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowDown,
                         contentDescription = if (expanded) "收起" else "展开",
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = adaptive.muted,
                         modifier = Modifier
                             .height(22.dp)
                             .width(22.dp)
@@ -800,13 +1093,14 @@ private fun BottomTabItem(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    val bg = if (enabled) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
-    val fg = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    val adaptive = LocalAdaptiveTextColors.current
+    val bg = Color.Transparent
+    val fg = if (enabled) adaptive.primary else adaptive.secondary
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(12.dp),
         color = bg,
-        border = if (enabled) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
+        border = null,
         onClick = onClick
     ) {
         Row(
@@ -845,10 +1139,11 @@ private fun ToneSection(
     saving: Boolean,
     status: String
 ) {
+    val adaptive = LocalAdaptiveTextColors.current
     Text(
         text = "选择或输入提示音，命中车辆口令后作为「已成功」提示音播放；留空则用系统默认通知音。",
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+        color = adaptive.secondary
     )
 
     Spacer(Modifier.height(8.dp))
@@ -866,9 +1161,9 @@ private fun ToneSection(
                     modifier = Modifier
                         .weight(1f)
                         .padding(vertical = 2.dp),
-                    colors = if (selected) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = MaterialTheme.colorScheme.onSurface
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.Transparent,
+                        contentColor = if (selected) adaptive.primary else adaptive.secondary
                     )
                 ) {
                     Text(if (selected) "✓ $name" else name, maxLines = 1)
@@ -887,10 +1182,21 @@ private fun ToneSection(
         value = toneUri,
         onValueChange = onCustomUriChange,
         modifier = Modifier.fillMaxWidth(),
-        label = { Text("自定义 URI（留空用默认）") },
+        label = { Text("自定义 URI（留空用默认）", color = adaptive.muted) },
         minLines = 1,
-        textStyle = TextStyle(fontSize = 14.sp),
-        placeholder = { Text("file:/// 或 content:// 开头，如 file:///sdcard/Music/a.ogg") }
+        textStyle = TextStyle(fontSize = 14.sp, color = adaptive.primary),
+        placeholder = { Text("file:/// 或 content:// 开头，如 file:///sdcard/Music/a.ogg", color = adaptive.muted) },
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = adaptive.primary,
+            unfocusedTextColor = adaptive.primary,
+            focusedLabelColor = adaptive.secondary,
+            unfocusedLabelColor = adaptive.muted,
+            focusedPlaceholderColor = adaptive.muted,
+            unfocusedPlaceholderColor = adaptive.muted,
+            focusedBorderColor = adaptive.secondary,
+            unfocusedBorderColor = adaptive.muted,
+            cursorColor = adaptive.primary
+        )
     )
 
     Spacer(Modifier.height(8.dp))
@@ -931,10 +1237,11 @@ private fun TextSection(
     saving: Boolean,
     status: String
 ) {
+    val adaptive = LocalAdaptiveTextColors.current
     Text(
         text = "每行一条，保存后命中口令时随机显示其中一条；点击下方预设可一键载入该方案。",
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+        color = adaptive.secondary
     )
 
     Spacer(Modifier.height(8.dp))
@@ -969,9 +1276,18 @@ private fun TextSection(
         modifier = Modifier
             .fillMaxWidth()
             .height(120.dp),
-        label = { Text("文案内容（每行一条）") },
+        label = { Text("文案内容（每行一条）", color = adaptive.muted) },
         minLines = 4,
-        textStyle = TextStyle(fontSize = 14.sp)
+        textStyle = TextStyle(fontSize = 14.sp, color = adaptive.primary),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = adaptive.primary,
+            unfocusedTextColor = adaptive.primary,
+            focusedLabelColor = adaptive.secondary,
+            unfocusedLabelColor = adaptive.muted,
+            focusedBorderColor = adaptive.secondary,
+            unfocusedBorderColor = adaptive.muted,
+            cursorColor = adaptive.primary
+        )
     )
 
     Spacer(Modifier.height(8.dp))
@@ -1007,25 +1323,28 @@ private fun CommandCard(
     cmd: EditableCommand,
     onKeywordsChange: (String) -> Unit
 ) {
+    val adaptive = LocalAdaptiveTextColors.current
     // 用 remember(cmd) 派生可写输入 state：跟随选中命令切换而重置，
     // 每次键盘输入都写入并触发重组，避免 mutableStateListOf 不响应元素字段修改的坑。
     var input by remember(cmd.code) { mutableStateOf(cmd.keywordsText) }
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.15f)),
+        shape = RoundedCornerShape(20.dp)
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = cmd.name,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    color = adaptive.primary
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = "命令码 ${cmd.code}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = adaptive.muted
                 )
             }
             Spacer(Modifier.height(8.dp))
@@ -1036,9 +1355,18 @@ private fun CommandCard(
                     onKeywordsChange(it)
                 },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("唤醒词（分隔符隔开）") },
+                label = { Text("唤醒词（分隔符隔开）", color = adaptive.muted) },
                 minLines = 1,
-                textStyle = TextStyle(fontSize = 15.sp)
+                textStyle = TextStyle(fontSize = 15.sp, color = adaptive.primary),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = adaptive.primary,
+                    unfocusedTextColor = adaptive.primary,
+                    focusedLabelColor = adaptive.secondary,
+                    unfocusedLabelColor = adaptive.muted,
+                    focusedBorderColor = adaptive.secondary,
+                    unfocusedBorderColor = adaptive.muted,
+                    cursorColor = adaptive.primary
+                )
             )
         }
     }
@@ -1062,15 +1390,11 @@ private fun SulistCard(
     msg: String?,
     onRecheck: () -> Unit
 ) {
+    val adaptive = LocalAdaptiveTextColors.current
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = when {
-                busy -> MaterialTheme.colorScheme.surfaceVariant
-                ok -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                else -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.30f)
-            }
-        )
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.15f)),
+        shape = RoundedCornerShape(20.dp)
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(
@@ -1080,28 +1404,29 @@ private fun SulistCard(
                 Text(
                     text = "su 白名单（sulist）自动配置",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    color = adaptive.primary
                 )
                 Spacer(Modifier.weight(1f))
                 if (busy) {
                     Text(
                         text = "检测中…",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
+                        color = adaptive.secondary
                     )
                 } else if (msg != null && ok) {
                     Text(
                         text = "已配置",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.tertiary
+                        color = Color(0xFF4CAF50)
                     )
                 } else if (msg != null) {
                     Text(
                         text = "待处理",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.error
+                        color = Color(0xFFFF9800)
                     )
                 }
             }
@@ -1111,7 +1436,7 @@ private fun SulistCard(
             Text(
                 text = "确保小爱同学与乘趣（含子进程）已加入 su 白名单，使模块可静默执行 root 命令。缺失时首次打开界面会自动补齐。",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = adaptive.secondary
             )
 
             if (msg != null) {
@@ -1119,7 +1444,7 @@ private fun SulistCard(
                 Text(
                     text = msg,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    color = if (ok) Color(0xFF4CAF50) else Color(0xFFFF9800)
                 )
             }
 
@@ -1128,7 +1453,11 @@ private fun SulistCard(
             OutlinedButton(
                 onClick = onRecheck,
                 enabled = !busy,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = adaptive.primary
+                ),
+                border = BorderStroke(1.dp, adaptive.muted)
             ) {
                 Text(if (busy) "正在检测/补写…" else "立即检测/补写")
             }
@@ -1138,7 +1467,7 @@ private fun SulistCard(
                 Text(
                     text = "提示：修改 sulist 需要【重启设备】后 magiskd 重新加载才生效。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.secondary
+                    color = adaptive.muted
                 )
             }
         }
@@ -1159,7 +1488,9 @@ private suspend fun writeConfig(
     successTexts: List<String>? = null,
     hideRecents: Boolean? = null,
     keepAlive: Boolean? = null,
-    silentMode: Boolean? = null
+    silentMode: Boolean? = null,
+    bypassCheck: Boolean? = null,
+    skinUnlock: Boolean? = null
 ): Boolean = withContext(Dispatchers.IO) {
     val cmdList = commands?.map {
         CommandMatcher.Command(
@@ -1172,7 +1503,7 @@ private suspend fun writeConfig(
     }
 
     // 1) 先尝试直接写（NokeyConfig.writeTo 内部会读现有配置做合并、刷新缓存）
-    if (NokeyConfig.writeTo(commands = cmdList, toneUri = toneUri, successTexts = successTexts, hideRecents = hideRecents, keepAlive = keepAlive, silentMode = silentMode)) {
+    if (NokeyConfig.writeTo(commands = cmdList, toneUri = toneUri, successTexts = successTexts, hideRecents = hideRecents, keepAlive = keepAlive, silentMode = silentMode, bypassCheck = bypassCheck, skinUnlock = skinUnlock)) {
         return@withContext true
     }
 
@@ -1185,7 +1516,9 @@ private suspend fun writeConfig(
         val mergedHideRecents = hideRecents ?: full?.hideRecents ?: false
         val mergedKeepAlive = keepAlive ?: full?.keepAlive ?: false
         val mergedSilentMode = silentMode ?: full?.silentMode ?: false
-        val json = NokeyConfig.toJson(mergedCommands, mergedTone, mergedTexts, mergedHideRecents, mergedKeepAlive, mergedSilentMode)
+        val mergedBypassCheck = bypassCheck ?: full?.bypassCheck ?: false
+        val mergedSkinUnlock = skinUnlock ?: full?.skinUnlock ?: false
+        val json = NokeyConfig.toJson(mergedCommands, mergedTone, mergedTexts, mergedHideRecents, mergedKeepAlive, mergedSilentMode, mergedBypassCheck, mergedSkinUnlock)
 
         val escaped = json
             .replace("\\", "\\\\")
@@ -1202,6 +1535,21 @@ private suspend fun writeConfig(
         return@withContext false
     } catch (t: Throwable) {
         return@withContext false
+    }
+}
+
+/**
+ * 强制重启乘趣车控进程，让改动的绕过校验/皮肤解锁配置立即生效。
+ * 通过 root shell 执行 am force-stop 后重新启动应用入口 Activity。
+ */
+private fun restartNokey() {
+    try {
+        // 乘趣真实启动入口（aapt/解析确认）：com.ingeek.nokey/com.ingeek.android.app.SplashPageActivity
+        val launcher = "com.ingeek.nokey/com.ingeek.android.app.SplashPageActivity"
+        val cmd = "am force-stop com.ingeek.nokey && sleep 1 && am start -n $launcher"
+        Runtime.getRuntime().exec(arrayOf("su", "-c", cmd)).waitFor()
+    } catch (t: Throwable) {
+        // 重启失败静默，配置本身已保存，用户可手动重启
     }
 }
 
