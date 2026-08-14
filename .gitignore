@@ -14,3 +14,7 @@ local.properties
 
 # ── 本地备份 ────────────────────────────────────
 .git.bak/
+.backup/
+
+# ── 隔离的 Gradle 缓存（本机构建用，不提交） ────
+.gradle_home/

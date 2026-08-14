@@ -44,6 +44,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.runtime.Composable
@@ -95,7 +96,19 @@ private data class AdaptiveTextColors(
     val secondary: Color,
     val muted: Color,
     val icon: Color,
-    val isLightBackground: Boolean
+    val isLightBackground: Boolean,
+    // 玻璃表面颜色（自适应，亮背景时用深色，暗背景时用浅色）
+    val glassSurface: Color,
+    val glassBorder: Color,
+    val glassSwitchTrackOn: Color,
+    val glassSwitchTrackOff: Color,
+    val glassSwitchThumbOn: Color,
+    val glassSwitchThumbOff: Color,
+    val glassButtonBg: Color,
+    val glassButtonBorder: Color,
+    val glassButtonText: Color,
+    val glassButtonDisabledBg: Color,
+    val glassButtonDisabledText: Color
 )
 
 private val LocalAdaptiveTextColors = compositionLocalOf {
@@ -104,29 +117,66 @@ private val LocalAdaptiveTextColors = compositionLocalOf {
         secondary = Color.White.copy(alpha = 0.82f),
         muted = Color.White.copy(alpha = 0.68f),
         icon = Color.White,
-        isLightBackground = false
+        isLightBackground = false,
+        glassSurface = Color.White.copy(alpha = 0.15f),
+        glassBorder = Color.White.copy(alpha = 0.35f),
+        glassSwitchTrackOn = Color.White.copy(alpha = 0.35f),
+        glassSwitchTrackOff = Color.White.copy(alpha = 0.12f),
+        glassSwitchThumbOn = Color.White,
+        glassSwitchThumbOff = Color.White.copy(alpha = 0.55f),
+        glassButtonBg = Color.White.copy(alpha = 0.18f),
+        glassButtonBorder = Color.White.copy(alpha = 0.35f),
+        glassButtonText = Color.White,
+        glassButtonDisabledBg = Color.White.copy(alpha = 0.08f),
+        glassButtonDisabledText = Color.White.copy(alpha = 0.4f)
     )
 }
 
 private fun bitmapLuminance(bitmap: android.graphics.Bitmap): Float {
-    val sample = android.graphics.Bitmap.createScaledBitmap(bitmap, 1, 1, true)
-    val pixel = sample.getPixel(0, 0)
-    if (sample !== bitmap) sample.recycle()
-    val r = android.graphics.Color.red(pixel) / 255f
-    val g = android.graphics.Color.green(pixel) / 255f
-    val b = android.graphics.Color.blue(pixel) / 255f
-    return 0.2126f * r + 0.7152f * g + 0.0722f * b
+    // 多点采样：左上、右上、中心、左下、右下 5 个点求平均
+    val w = bitmap.width
+    val h = bitmap.height
+    val points = listOf(
+        Pair(w / 4, h / 4),           // 左上
+        Pair(w * 3 / 4, h / 4),       // 右上
+        Pair(w / 2, h / 2),           // 中心
+        Pair(w / 4, h * 3 / 4),       // 左下
+        Pair(w * 3 / 4, h * 3 / 4)    // 右下
+    )
+    
+    var totalLuminance = 0f
+    points.forEach { (x, y) ->
+        val pixel = bitmap.getPixel(x, y)
+        val r = android.graphics.Color.red(pixel) / 255f
+        val g = android.graphics.Color.green(pixel) / 255f
+        val b = android.graphics.Color.blue(pixel) / 255f
+        totalLuminance += 0.2126f * r + 0.7152f * g + 0.0722f * b
+    }
+    
+    return totalLuminance / points.size
 }
 
 private fun adaptiveColors(bitmap: android.graphics.Bitmap?): AdaptiveTextColors {
-    val isLight = bitmap != null && bitmapLuminance(bitmap) >= 0.52f
+    // 如果没有图片（加载失败），默认使用深色背景的白色文字
+    val isLight = if (bitmap == null) false else bitmapLuminance(bitmap) >= 0.52f
     return if (isLight) {
         AdaptiveTextColors(
             primary = Color(0xFF111111),
             secondary = Color(0xFF222222).copy(alpha = 0.86f),
             muted = Color(0xFF333333).copy(alpha = 0.76f),
             icon = Color(0xFF111111),
-            isLightBackground = true
+            isLightBackground = true,
+            glassSurface = Color(0xFF111111).copy(alpha = 0.10f),
+            glassBorder = Color(0xFF111111).copy(alpha = 0.20f),
+            glassSwitchTrackOn = Color(0xFF111111).copy(alpha = 0.30f),
+            glassSwitchTrackOff = Color(0xFF111111).copy(alpha = 0.10f),
+            glassSwitchThumbOn = Color(0xFF111111),
+            glassSwitchThumbOff = Color(0xFF111111).copy(alpha = 0.50f),
+            glassButtonBg = Color(0xFF111111).copy(alpha = 0.12f),
+            glassButtonBorder = Color(0xFF111111).copy(alpha = 0.25f),
+            glassButtonText = Color(0xFF111111),
+            glassButtonDisabledBg = Color(0xFF111111).copy(alpha = 0.05f),
+            glassButtonDisabledText = Color(0xFF111111).copy(alpha = 0.35f)
         )
     } else {
         AdaptiveTextColors(
@@ -134,7 +184,18 @@ private fun adaptiveColors(bitmap: android.graphics.Bitmap?): AdaptiveTextColors
             secondary = Color.White.copy(alpha = 0.88f),
             muted = Color.White.copy(alpha = 0.74f),
             icon = Color.White,
-            isLightBackground = false
+            isLightBackground = false,
+            glassSurface = Color.White.copy(alpha = 0.15f),
+            glassBorder = Color.White.copy(alpha = 0.35f),
+            glassSwitchTrackOn = Color.White.copy(alpha = 0.35f),
+            glassSwitchTrackOff = Color.White.copy(alpha = 0.12f),
+            glassSwitchThumbOn = Color.White,
+            glassSwitchThumbOff = Color.White.copy(alpha = 0.55f),
+            glassButtonBg = Color.White.copy(alpha = 0.18f),
+            glassButtonBorder = Color.White.copy(alpha = 0.35f),
+            glassButtonText = Color.White,
+            glassButtonDisabledBg = Color.White.copy(alpha = 0.08f),
+            glassButtonDisabledText = Color.White.copy(alpha = 0.4f)
         )
     }
 }
@@ -153,10 +214,42 @@ private fun adaptiveColors(bitmap: android.graphics.Bitmap?): AdaptiveTextColors
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        
+        // 完全沉浸式：隐藏状态栏和导航栏的图标，内容延伸至全屏
+        // （内容通过固定状态栏/导航栏高度占位，避免界面上移）
+        window.decorView.systemUiVisibility = (
+            android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+            android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+            android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+            android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or
+            android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        )
+        
+        // 透明状态栏和导航栏
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        
         setContent {
-            MyApplicationTheme {
-                ConfigScreen()
+            // 最外层 Box 直接填充全屏，不受主题影响
+            Box(modifier = Modifier.fillMaxSize()) {
+                // 渐变背景（最底层，图片加载失败时兜底）
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xFF1a237e), // 深蓝
+                                    Color(0xFF4a148c)  // 深紫
+                                )
+                            )
+                        )
+                )
+                
+                MyApplicationTheme {
+                    ConfigScreen()
+                }
             }
         }
     }
@@ -347,25 +440,23 @@ fun ConfigScreen() {
 
     // 玻璃取样：layerBackdrop 能取样到背景图片的真实像素
     val glassBackdrop = rememberLayerBackdrop()
-
+    // 系统栏被沉浸式隐藏后 insets 会归 0，这里用系统资源高度固定占位，
+    // 保证功能板块不因隐藏图标而整体上移
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val statusBarHeightPx = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+        .takeIf { it != 0 }?.let {
+            val dimen = context.resources.getDimensionPixelSize(it)
+            with(density) { dimen.toDp() }
+        } ?: 28.dp
+    val navBarHeightPx = context.resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        .takeIf { it != 0 }?.let {
+            val dimen = context.resources.getDimensionPixelSize(it)
+            with(density) { dimen.toDp() }
+        } ?: 0.dp
     Box(modifier = Modifier
         .fillMaxSize()
         .layerBackdrop(glassBackdrop)
     ) {
-        // ============ 渐变背景（最底层，图片加载失败时兜底） ============
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xFF1a237e), // 深蓝
-                            Color(0xFF4a148c)  // 深紫
-                        )
-                    )
-                )
-        )
-
         // ============ 网络背景图（手动 HTTP 下载，成功时盖住渐变） ============
         val bmp = bgBitmap
         if (bmp != null) {
@@ -378,21 +469,21 @@ fun ConfigScreen() {
         }
 
         // ============ 前景内容（玻璃卡片叠加在图片上） ============
-        val adaptiveTextColors = remember(bmp) { adaptiveColors(bmp) }
-        val adaptive = adaptiveTextColors
-        CompositionLocalProvider(LocalAdaptiveTextColors provides adaptiveTextColors) {
-            Scaffold(
-                modifier = Modifier.fillMaxSize(),
-                containerColor = Color.Transparent
-            ) { innerPadding ->
+    val adaptiveTextColors = remember(bmp) { adaptiveColors(bmp) }
+    val adaptive = adaptiveTextColors
+    CompositionLocalProvider(LocalAdaptiveTextColors provides adaptiveTextColors) {
+        Box(modifier = Modifier
+            .fillMaxSize()
+        ) {
             Column(
                 modifier = Modifier
-                    .padding(innerPadding)
+                    .fillMaxSize()
+                    .padding(top = statusBarHeightPx, bottom = navBarHeightPx)
                     .padding(horizontal = 16.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-            Spacer(Modifier.height(4.dp))
+Spacer(Modifier.height(4.dp))
 
             // ============ 标题下方：行为开关条（隐藏后台卡片 / 保活 / 全静默 / 绕过校验 / 皮肤解锁） ============
             BehaviorSwitchBar(
@@ -510,7 +601,7 @@ fun ConfigScreen() {
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(
+                GlassButton(
                     onClick = {
                         savingWords = true
                         scope.launch {
@@ -530,7 +621,7 @@ fun ConfigScreen() {
                     Text(if (savingWords) "保存中…" else "保存唤醒词")
                 }
 
-                OutlinedButton(
+                GlassButton(
                     onClick = {
                         val defaults = CommandMatcher.DEFAULT_COMMANDS
                         commands.clear()
@@ -609,7 +700,7 @@ fun ConfigScreen() {
                 context = context
             )
 
-            OutlinedButton(
+            GlassButton(
                 onClick = {
                     scope.launch {
                         val full = NokeyConfig.loadFull(force = true)
@@ -663,9 +754,9 @@ fun ConfigScreen() {
 
             Spacer(Modifier.height(24.dp))
             }
-            }
         }
     }
+}
 }
 
 /**
@@ -731,6 +822,270 @@ private fun PaletteIcon(color: Color) {
 }
 
 /**
+ * 统一风格的按钮图标：用于行为开关条。
+ * 所有图标使用 Canvas 自绘，不依赖 res 资源，风格统一为精致线性图标。
+ */
+@Composable
+private fun BehIconEyeOff(color: Color) {
+    Canvas(modifier = Modifier.height(20.dp).width(20.dp)) {
+        val w = size.width; val h = size.height; val s = Stroke(1.6f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // 眼睛轮廓
+        val eye = Path().apply {
+            moveTo(w * 0.12f, h * 0.5f)
+            cubicTo(w * 0.12f, h * 0.5f, w * 0.28f, h * 0.25f, w * 0.5f, h * 0.25f)
+            cubicTo(w * 0.72f, h * 0.25f, w * 0.88f, h * 0.5f, w * 0.88f, h * 0.5f)
+            cubicTo(w * 0.88f, h * 0.5f, w * 0.72f, h * 0.75f, w * 0.5f, h * 0.75f)
+            cubicTo(w * 0.28f, h * 0.75f, w * 0.12f, h * 0.5f, w * 0.12f, h * 0.5f)
+            close()
+        }
+        drawPath(eye, color = color, style = s)
+        // 瞳孔
+        drawCircle(color = color, radius = 2.8f * density, center = Offset(w * 0.5f, h * 0.5f))
+        // 斜线
+        drawLine(color = color, start = Offset(w * 0.2f, h * 0.2f), end = Offset(w * 0.8f, h * 0.8f), strokeWidth = 1.6f * density, cap = StrokeCap.Round)
+    }
+}
+
+@Composable
+private fun BehIconHeartbeat(color: Color) {
+    Canvas(modifier = Modifier.height(20.dp).width(20.dp)) {
+        val w = size.width; val h = size.height; val s = Stroke(1.6f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // 心电图
+        val pulse = Path().apply {
+            moveTo(w * 0.0f, h * 0.5f)
+            lineTo(w * 0.3f, h * 0.5f)
+            lineTo(w * 0.38f, h * 0.3f)
+            lineTo(w * 0.46f, h * 0.7f)
+            lineTo(w * 0.54f, h * 0.3f)
+            lineTo(w * 0.62f, h * 0.7f)
+            lineTo(w * 0.7f, h * 0.5f)
+            lineTo(w * 1.0f, h * 0.5f)
+        }
+        drawPath(pulse, color = color, style = s)
+    }
+}
+
+@Composable
+private fun BehIconBellOff(color: Color) {
+    Canvas(modifier = Modifier.height(20.dp).width(20.dp)) {
+        val w = size.width; val h = size.height; val s = Stroke(1.6f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // 铃铛
+        val bell = Path().apply {
+            moveTo(w * 0.5f, h * 0.08f)
+            lineTo(w * 0.5f, h * 0.14f)
+            cubicTo(w * 0.28f, h * 0.18f, w * 0.2f, h * 0.38f, w * 0.2f, h * 0.5f)
+            lineTo(w * 0.18f, h * 0.62f)
+            cubicTo(w * 0.16f, h * 0.7f, w * 0.2f, h * 0.78f, w * 0.28f, h * 0.78f)
+            lineTo(w * 0.72f, h * 0.78f)
+            cubicTo(w * 0.8f, h * 0.78f, w * 0.84f, h * 0.7f, w * 0.82f, h * 0.62f)
+            lineTo(w * 0.8f, h * 0.5f)
+        }
+        drawPath(bell, color = color, style = s)
+        // 铃锤
+        drawLine(color = color, start = Offset(w * 0.5f, h * 0.78f), end = Offset(w * 0.5f, h * 0.88f), strokeWidth = 1.6f * density, cap = StrokeCap.Round)
+        // 斜线
+        drawLine(color = color, start = Offset(w * 0.2f, h * 0.2f), end = Offset(w * 0.8f, h * 0.8f), strokeWidth = 1.6f * density, cap = StrokeCap.Round)
+    }
+}
+
+/**
+ * 统一风格的命令图标：用于顶部 6 个命令图标。
+ * 所有图标使用 Canvas 自绘，风格统一精致。
+ */
+@Composable
+private fun CmdIconUnlock(color: Color) {
+    Canvas(modifier = Modifier.height(24.dp).width(24.dp)) {
+        val w = size.width; val h = size.height; val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // 锁体
+        val body = Path().apply {
+            moveTo(w * 0.25f, h * 0.55f)
+            lineTo(w * 0.75f, h * 0.55f)
+            lineTo(w * 0.75f, h * 0.92f)
+            lineTo(w * 0.25f, h * 0.92f)
+            close()
+        }
+        drawPath(body, color = color, style = s)
+        // 锁梁（打开状态）
+        val shackle = Path().apply {
+            moveTo(w * 0.35f, h * 0.55f)
+            lineTo(w * 0.35f, h * 0.35f)
+            cubicTo(w * 0.35f, h * 0.2f, w * 0.5f, h * 0.15f, w * 0.6f, h * 0.22f)
+        }
+        drawPath(shackle, color = color, style = s)
+        // 钥匙孔
+        drawCircle(color = color, radius = 2.0f * density, center = Offset(w * 0.5f, h * 0.73f))
+        drawLine(color = color, start = Offset(w * 0.5f, h * 0.78f), end = Offset(w * 0.5f, h * 0.85f), strokeWidth = 1.8f * density, cap = StrokeCap.Round)
+    }
+}
+
+@Composable
+private fun CmdIconLock(color: Color) {
+    Canvas(modifier = Modifier.height(24.dp).width(24.dp)) {
+        val w = size.width; val h = size.height; val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val body = Path().apply {
+            moveTo(w * 0.25f, h * 0.55f)
+            lineTo(w * 0.75f, h * 0.55f)
+            lineTo(w * 0.75f, h * 0.92f)
+            lineTo(w * 0.25f, h * 0.92f)
+            close()
+        }
+        drawPath(body, color = color, style = s)
+        val shackle = Path().apply {
+            moveTo(w * 0.35f, h * 0.55f)
+            lineTo(w * 0.35f, h * 0.32f)
+            cubicTo(w * 0.35f, h * 0.15f, w * 0.65f, h * 0.15f, w * 0.65f, h * 0.32f)
+            lineTo(w * 0.65f, h * 0.55f)
+        }
+        drawPath(shackle, color = color, style = s)
+        drawCircle(color = color, radius = 2.0f * density, center = Offset(w * 0.5f, h * 0.73f))
+    }
+}
+
+@Composable
+private fun CmdIconEngineStart(color: Color) {
+    Canvas(modifier = Modifier.height(24.dp).width(24.dp)) {
+        val w = size.width; val h = size.height; val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // 外圆
+        drawCircle(color = color, radius = w * 0.4f, center = Offset(w * 0.5f, h * 0.5f), style = s)
+        // 三角形播放符号
+        val triangle = Path().apply {
+            moveTo(w * 0.42f, h * 0.35f)
+            lineTo(w * 0.65f, h * 0.5f)
+            lineTo(w * 0.42f, h * 0.65f)
+            close()
+        }
+        drawPath(triangle, color = color, style = s)
+    }
+}
+
+@Composable
+private fun CmdIconEngineStop(color: Color) {
+    Canvas(modifier = Modifier.height(24.dp).width(24.dp)) {
+        val w = size.width; val h = size.height; val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        drawCircle(color = color, radius = w * 0.4f, center = Offset(w * 0.5f, h * 0.5f), style = s)
+        // 方形停止
+        val square = Path().apply {
+            moveTo(w * 0.38f, h * 0.38f)
+            lineTo(w * 0.62f, h * 0.38f)
+            lineTo(w * 0.62f, h * 0.62f)
+            lineTo(w * 0.38f, h * 0.62f)
+            close()
+        }
+        drawPath(square, color = color, style = s)
+    }
+}
+
+@Composable
+private fun CmdIconWindowUp(color: Color) {
+    Canvas(modifier = Modifier.height(24.dp).width(24.dp)) {
+        val w = size.width; val h = size.height; val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // 车窗矩形
+        val rect = Path().apply {
+            moveTo(w * 0.15f, h * 0.2f)
+            lineTo(w * 0.85f, h * 0.2f)
+            lineTo(w * 0.85f, h * 0.85f)
+            lineTo(w * 0.15f, h * 0.85f)
+            close()
+        }
+        drawPath(rect, color = color, style = s)
+        // 向上箭头
+        val arrow = Path().apply {
+            moveTo(w * 0.5f, h * 0.35f)
+            lineTo(w * 0.5f, h * 0.65f)
+            moveTo(w * 0.38f, h * 0.45f)
+            lineTo(w * 0.5f, h * 0.35f)
+            lineTo(w * 0.62f, h * 0.45f)
+        }
+        drawPath(arrow, color = color, style = s)
+    }
+}
+
+@Composable
+private fun CmdIconWindowDown(color: Color) {
+    Canvas(modifier = Modifier.height(24.dp).width(24.dp)) {
+        val w = size.width; val h = size.height; val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val rect = Path().apply {
+            moveTo(w * 0.15f, h * 0.2f)
+            lineTo(w * 0.85f, h * 0.2f)
+            lineTo(w * 0.85f, h * 0.85f)
+            lineTo(w * 0.15f, h * 0.85f)
+            close()
+        }
+        drawPath(rect, color = color, style = s)
+        val arrow = Path().apply {
+            moveTo(w * 0.5f, h * 0.65f)
+            lineTo(w * 0.5f, h * 0.35f)
+            moveTo(w * 0.38f, h * 0.55f)
+            lineTo(w * 0.5f, h * 0.65f)
+            lineTo(w * 0.62f, h * 0.55f)
+        }
+        drawPath(arrow, color = color, style = s)
+    }
+}
+
+/**
+ * 玻璃风格 Switch 组件。
+ * 开启时背景为半透明白+前景色滑块，带轻微的玻璃模糊质感。
+ */
+@Composable
+private fun GlassSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier
+) {
+    val adaptive = LocalAdaptiveTextColors.current
+    val trackColor = if (checked) adaptive.glassSwitchTrackOn else adaptive.glassSwitchTrackOff
+    val thumbColor = if (checked) adaptive.glassSwitchThumbOn else adaptive.glassSwitchThumbOff
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        enabled = enabled,
+        colors = androidx.compose.material3.SwitchDefaults.colors(
+            checkedTrackColor = trackColor,
+            checkedThumbColor = thumbColor,
+            uncheckedTrackColor = trackColor,
+            uncheckedThumbColor = thumbColor,
+            disabledCheckedTrackColor = trackColor.copy(alpha = 0.5f),
+            disabledCheckedThumbColor = thumbColor.copy(alpha = 0.5f),
+            disabledUncheckedTrackColor = trackColor.copy(alpha = 0.5f),
+            disabledUncheckedThumbColor = thumbColor.copy(alpha = 0.5f)
+        ),
+        modifier = modifier
+    )
+}
+
+/**
+ * 玻璃风格按钮。
+ */
+@Composable
+private fun GlassButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    val adaptive = LocalAdaptiveTextColors.current
+    val bg = if (enabled) adaptive.glassButtonBg else adaptive.glassButtonDisabledBg
+    val borderColor = if (enabled) adaptive.glassButtonBorder else adaptive.glassButtonBorder.copy(alpha = 0.3f)
+    val textColor = if (enabled) adaptive.glassButtonText else adaptive.glassButtonDisabledText
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = bg,
+        border = BorderStroke(1.dp, borderColor)
+    ) {
+        Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp), contentAlignment = Alignment.Center) {
+            CompositionLocalProvider(LocalContentColor provides textColor) {
+                content()
+            }
+        }
+    }
+}
+
+/**
  * 标题下方的行为开关条：隐藏后台卡片 / 保活 / 全静默 / 绕过校验 / 皮肤解锁 五个开关。
  * 设计为一张圆角浅底卡片，内部五个单元均分宽度（weight=1f），
  * 每个单元竖向排列「图标 + 标签 + 开关」，视觉统一、不重叠。
@@ -757,7 +1112,7 @@ private fun BehaviorSwitchBar(
     val adaptive = LocalAdaptiveTextColors.current
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.15f)),
+        colors = CardDefaults.cardColors(containerColor = adaptive.glassSurface),
         shape = RoundedCornerShape(20.dp)
     ) {
         Row(
@@ -765,7 +1120,7 @@ private fun BehaviorSwitchBar(
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             SwitchCell(
-                iconRes = R.drawable.ic_beh_recents,
+                behIcon = { BehIconEyeOff(it) },
                 label = "隐藏后台卡片",
                 checked = hideRecents,
                 saving = savingHideRecents,
@@ -773,7 +1128,7 @@ private fun BehaviorSwitchBar(
                 modifier = Modifier.weight(1f)
             )
             SwitchCell(
-                iconRes = R.drawable.ic_beh_keepalive,
+                behIcon = { BehIconHeartbeat(it) },
                 label = "保活",
                 checked = keepAlive,
                 saving = savingKeepAlive,
@@ -781,7 +1136,7 @@ private fun BehaviorSwitchBar(
                 modifier = Modifier.weight(1f)
             )
             SwitchCell(
-                iconRes = R.drawable.ic_beh_silent,
+                behIcon = { BehIconBellOff(it) },
                 label = "全静默",
                 checked = silentMode,
                 saving = savingSilentMode,
@@ -789,22 +1144,20 @@ private fun BehaviorSwitchBar(
                 modifier = Modifier.weight(1f)
             )
             SwitchCell(
-                iconRes = R.drawable.ic_beh_keepalive,
+                behIcon = { ShieldIcon(it) },
                 label = "绕过校验",
                 checked = bypassCheck,
                 saving = savingBypassCheck,
                 onToggle = onBypassCheck,
-                modifier = Modifier.weight(1f),
-                customIcon = { ShieldIcon(adaptive.icon) }
+                modifier = Modifier.weight(1f)
             )
             SwitchCell(
-                iconRes = R.drawable.ic_beh_keepalive,
+                behIcon = { PaletteIcon(it) },
                 label = "皮肤解锁",
                 checked = skinUnlock,
                 saving = savingSkinUnlock,
                 onToggle = onSkinUnlock,
-                modifier = Modifier.weight(1f),
-                customIcon = { PaletteIcon(adaptive.icon) }
+                modifier = Modifier.weight(1f)
             )
         }
     }
@@ -812,17 +1165,16 @@ private fun BehaviorSwitchBar(
 
 /**
  * 行为开关条中的单个单元：图标在上、标签居中、开关在下。
+ * 使用 Canvas 自绘图标 + 玻璃风格 Switch。
  */
 @Composable
 private fun SwitchCell(
-    iconRes: Int,
+    behIcon: @Composable (Color) -> Unit,
     label: String,
     checked: Boolean,
     saving: Boolean,
     onToggle: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-    // 自绘图标：不依赖 res 资源，避免为加图标而改动资源 ID 导致旧底座闪退
-    customIcon: (@Composable () -> Unit)? = null
+    modifier: Modifier = Modifier
 ) {
     val adaptive = LocalAdaptiveTextColors.current
     Column(
@@ -830,28 +1182,19 @@ private fun SwitchCell(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        if (customIcon != null) {
-            Box(modifier = Modifier.height(22.dp).width(22.dp), contentAlignment = Alignment.Center) {
-                customIcon()
-            }
-        } else {
-            Icon(
-                painter = painterResource(iconRes),
-                contentDescription = label,
-                tint = adaptive.icon,
-                modifier = Modifier.height(22.dp).width(22.dp)
-            )
+        Box(modifier = Modifier.height(22.dp).width(22.dp), contentAlignment = Alignment.Center) {
+            behIcon(adaptive.icon)
         }
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold,
-            color = adaptive.primary,
+            color = adaptive.secondary,
             textAlign = TextAlign.Center,
             maxLines = 1,
             softWrap = false
         )
-        Switch(
+        GlassSwitch(
             checked = checked,
             onCheckedChange = onToggle,
             enabled = !saving
@@ -860,7 +1203,7 @@ private fun SwitchCell(
 }
 
 /**
- * 顶部一排 6 个命令图标（参照源图控车图标形态：图标在上、文字在下，横向一字排满）。
+ * 顶部一排 6 个命令图标，全部使用 Canvas 自绘统一风格。
  * 每个子项均分一行（weight=1f），选中项高亮显示。
  */
 @Composable
@@ -870,42 +1213,40 @@ private fun CommandIconRow(
     onSelect: (Int) -> Unit
 ) {
     val adaptive = LocalAdaptiveTextColors.current
+    // 命令名称 → Canvas 图标映射
+    val cmdIcons: Map<String, @Composable (Color) -> Unit> = mapOf(
+        "解锁" to { CmdIconUnlock(it) },
+        "锁车" to { CmdIconLock(it) },
+        "引擎启动" to { CmdIconEngineStart(it) },
+        "引擎关闭" to { CmdIconEngineStop(it) },
+        "车窗开" to { CmdIconWindowUp(it) },
+        "车窗关" to { CmdIconWindowDown(it) }
+    )
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         commands.forEachIndexed { index, cmd ->
             val selected = index == selectedIndex
-            val spec = COMMAND_ICONS[cmd.name]
-            val bg = Color.Transparent
+            val bg = if (selected) adaptive.glassSurface.copy(alpha = 0.6f) else adaptive.glassSurface.copy(alpha = 0.3f)
+            val borderColor = if (selected) adaptive.glassBorder else adaptive.glassBorder.copy(alpha = 0.3f)
             val fg = if (selected) adaptive.primary else adaptive.secondary
-            val borderColor = Color.Transparent
 
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .background(
-                        color = bg,
-                        shape = RoundedCornerShape(14.dp)
-                    )
-                    .border(
-                        border = BorderStroke(1.dp, borderColor),
-                        shape = RoundedCornerShape(14.dp)
-                    )
+                    .background(color = bg, shape = RoundedCornerShape(14.dp))
+                    .border(border = BorderStroke(1.dp, borderColor), shape = RoundedCornerShape(14.dp))
                     .clickable { onSelect(index) }
                     .padding(vertical = 10.dp, horizontal = 2.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (spec != null) {
-                    Icon(
-                        painter = painterResource(spec.resId),
-                        contentDescription = cmd.name,
-                        tint = spec.tint ?: fg,
-                        modifier = Modifier
-                            .height(24.dp)
-                            .width(24.dp)
-                    )
+                val icon = cmdIcons[cmd.name]
+                if (icon != null) {
+                    Box(modifier = Modifier.height(24.dp).width(24.dp), contentAlignment = Alignment.Center) {
+                        icon(fg)
+                    }
                 } else {
                     Spacer(Modifier.height(22.dp))
                 }
@@ -970,7 +1311,7 @@ private fun BottomFeatureBlock(
     val glassSurface = Color.White.copy(alpha = 0.15f)
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.15f)),
+        colors = CardDefaults.cardColors(containerColor = adaptive.glassSurface),
         shape = RoundedCornerShape(24.dp)
     ) {
         Column(Modifier.padding(vertical = 6.dp)) {
@@ -1157,14 +1498,14 @@ private fun ToneSection(
             rowItems.forEach { (name, uri) ->
                 val selected = selectedToneName == name
                 Button(
-                    onClick = { onSelectSuggested(name, uri) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(vertical = 2.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.Transparent,
-                        contentColor = if (selected) adaptive.primary else adaptive.secondary
-                    )
+            onClick = { onSelectSuggested(name, uri) },
+            modifier = Modifier
+                .weight(1f)
+                .padding(vertical = 2.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color.Transparent,
+                contentColor = if (selected) adaptive.primary else adaptive.secondary
+            )
                 ) {
                     Text(if (selected) "✓ $name" else name, maxLines = 1)
                 }
@@ -1202,13 +1543,18 @@ private fun ToneSection(
     Spacer(Modifier.height(8.dp))
 
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        val adaptive = LocalAdaptiveTextColors.current
         OutlinedButton(
             onClick = onPreview,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            border = BorderStroke(2.dp, adaptive.glassBorder),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = adaptive.glassButtonText
+            )
         ) {
             Text("试听")
         }
-        Button(
+        GlassButton(
             onClick = onSave,
             enabled = !saving,
             modifier = Modifier.weight(1f)
@@ -1252,13 +1598,18 @@ private fun TextSection(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            val adaptive = LocalAdaptiveTextColors.current
             rowItems.forEach { (name, lines) ->
                 OutlinedButton(
                     onClick = { onTextChange(lines.joinToString("\n")) },
                     modifier = Modifier
                         .weight(1f)
-                        .padding(vertical = 1.dp)
-                ) {
+                        .padding(vertical = 1.dp),
+                    border = BorderStroke(2.dp, adaptive.glassBorder),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = adaptive.glassButtonText
+                    )
+) {
                     Text("载入「$name」(${lines.size} 条)", maxLines = 1)
                 }
             }
@@ -1291,15 +1642,19 @@ private fun TextSection(
     )
 
     Spacer(Modifier.height(8.dp))
-
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        OutlinedButton(
+val adaptive = LocalAdaptiveTextColors.current
+OutlinedButton(
             onClick = onPreview,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            border = BorderStroke(2.dp, adaptive.glassBorder),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = adaptive.glassButtonText
+            )
         ) {
             Text("随机试看")
         }
-        Button(
+        GlassButton(
             onClick = onSave,
             enabled = !saving,
             modifier = Modifier.weight(1f)
@@ -1329,7 +1684,7 @@ private fun CommandCard(
     var input by remember(cmd.code) { mutableStateOf(cmd.keywordsText) }
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.15f)),
+        colors = CardDefaults.cardColors(containerColor = adaptive.glassSurface),
         shape = RoundedCornerShape(20.dp)
     ) {
         Column(Modifier.padding(12.dp)) {
@@ -1393,7 +1748,7 @@ private fun SulistCard(
     val adaptive = LocalAdaptiveTextColors.current
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.15f)),
+        colors = CardDefaults.cardColors(containerColor = adaptive.glassSurface),
         shape = RoundedCornerShape(20.dp)
     ) {
         Column(Modifier.padding(12.dp)) {
@@ -1455,9 +1810,9 @@ private fun SulistCard(
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = adaptive.primary
+                    contentColor = adaptive.glassButtonText
                 ),
-                border = BorderStroke(1.dp, adaptive.muted)
+                border = BorderStroke(2.dp, adaptive.glassBorder)
             ) {
                 Text(if (busy) "正在检测/补写…" else "立即检测/补写")
             }

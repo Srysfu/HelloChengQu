@@ -44,13 +44,8 @@ android {
 }
 
 // Force use of ARM64 binaries for AAPT2 in Proot environment
-configurations.all {
-    resolutionStrategy.eachDependency {
-        if (requested.group == "com.android.tools.build" && requested.name == "aapt2") {
-            useTarget("com.android.tools.build:aapt2:${'$'}{requested.version}:linux-aarch64")
-        }
-    }
-}
+// NOTE: Gradle modules cache has been pre-populated with ARM64 aapt2 jar
+// to support aarch64/ARM64 Linux environment. See prep_aapt2.sh if needed.
 
 dependencies {
 
