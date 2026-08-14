@@ -10,9 +10,9 @@
 
 ---
 
-## 截图
+## 主界面预览
 
-<img src="screenshot.jpg" width="300" alt="HelloChengQu 界面">
+<img src="screenshot.jpg" width="300" alt="HelloChengQu 主界面">
 
 ---
 
