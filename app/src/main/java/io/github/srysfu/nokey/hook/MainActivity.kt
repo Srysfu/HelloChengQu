@@ -74,6 +74,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -289,7 +290,9 @@ private val COMMAND_ICONS: Map<String, CommandIconSpec> = mapOf(
     "引擎启动" to CommandIconSpec(R.drawable.ic_engine_start, null),
     "引擎关闭" to CommandIconSpec(R.drawable.ic_engine_off, Color.Unspecified),
     "车窗开" to CommandIconSpec(R.drawable.ic_window, Color(0xFF1976D2)),
-    "车窗关" to CommandIconSpec(R.drawable.ic_window, Color(0xFFC62828))
+    "车窗关" to CommandIconSpec(R.drawable.ic_window, Color(0xFFC62828)),
+    "开后备箱" to CommandIconSpec(R.drawable.ic_lock, Color(0xFF2E7D32)),
+    "寻车" to CommandIconSpec(R.drawable.ic_engine_start, Color.Unspecified)
 )
 
 @Composable
@@ -889,112 +892,113 @@ private fun BehIconBellOff(color: Color) {
 }
 
 /**
- * 统一风格的命令图标：用于顶部 6 个命令图标。
- * 所有图标使用 Canvas 自绘，风格统一精致。
+ * 8 个命令图标：Canvas 自绘，照乘趣参考图风格。
+ * 深灰线条 + 局部实心填充，浅色背景下清晰醒目。
+ * 语义：车门(挂锁)、引擎(START键)、车窗(窗框+升降)、尾门(后视掀盖)、寻车(车+信号波)。
  */
 @Composable
 private fun CmdIconUnlock(color: Color) {
     Canvas(modifier = Modifier.height(24.dp).width(24.dp)) {
-        val w = size.width; val h = size.height; val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        // 锁体
+        val w = size.width; val h = size.height
+        val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // 锁体（圆角矩形，参考图车门锁样式）
         val body = Path().apply {
-            moveTo(w * 0.25f, h * 0.55f)
-            lineTo(w * 0.75f, h * 0.55f)
-            lineTo(w * 0.75f, h * 0.92f)
-            lineTo(w * 0.25f, h * 0.92f)
+            moveTo(w * 0.3f, h * 0.55f)
+            lineTo(w * 0.7f, h * 0.55f)
+            lineTo(w * 0.7f, h * 0.92f)
+            lineTo(w * 0.3f, h * 0.92f)
             close()
         }
         drawPath(body, color = color, style = s)
-        // 锁梁（打开状态）
+        // 锁梁（打开：左竖右抬）
         val shackle = Path().apply {
-            moveTo(w * 0.35f, h * 0.55f)
-            lineTo(w * 0.35f, h * 0.35f)
-            cubicTo(w * 0.35f, h * 0.2f, w * 0.5f, h * 0.15f, w * 0.6f, h * 0.22f)
+            moveTo(w * 0.39f, h * 0.55f)
+            lineTo(w * 0.39f, h * 0.32f)
+            cubicTo(w * 0.39f, h * 0.18f, w * 0.58f, h * 0.13f, w * 0.68f, h * 0.24f)
         }
         drawPath(shackle, color = color, style = s)
-        // 钥匙孔
-        drawCircle(color = color, radius = 2.0f * density, center = Offset(w * 0.5f, h * 0.73f))
-        drawLine(color = color, start = Offset(w * 0.5f, h * 0.78f), end = Offset(w * 0.5f, h * 0.85f), strokeWidth = 1.8f * density, cap = StrokeCap.Round)
+        // 钥匙孔（实心圆点）
+        drawCircle(color = color, radius = 1.6f * density, center = Offset(w * 0.5f, h * 0.73f))
+        drawLine(color = color, start = Offset(w * 0.5f, h * 0.78f), end = Offset(w * 0.5f, h * 0.86f), strokeWidth = 1.8f * density, cap = StrokeCap.Round)
     }
 }
 
 @Composable
 private fun CmdIconLock(color: Color) {
     Canvas(modifier = Modifier.height(24.dp).width(24.dp)) {
-        val w = size.width; val h = size.height; val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val w = size.width; val h = size.height
+        val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
         val body = Path().apply {
-            moveTo(w * 0.25f, h * 0.55f)
-            lineTo(w * 0.75f, h * 0.55f)
-            lineTo(w * 0.75f, h * 0.92f)
-            lineTo(w * 0.25f, h * 0.92f)
+            moveTo(w * 0.3f, h * 0.55f)
+            lineTo(w * 0.7f, h * 0.55f)
+            lineTo(w * 0.7f, h * 0.92f)
+            lineTo(w * 0.3f, h * 0.92f)
             close()
         }
         drawPath(body, color = color, style = s)
+        // 锁梁（闭合拱形）
         val shackle = Path().apply {
-            moveTo(w * 0.35f, h * 0.55f)
-            lineTo(w * 0.35f, h * 0.32f)
-            cubicTo(w * 0.35f, h * 0.15f, w * 0.65f, h * 0.15f, w * 0.65f, h * 0.32f)
-            lineTo(w * 0.65f, h * 0.55f)
+            moveTo(w * 0.39f, h * 0.55f)
+            lineTo(w * 0.39f, h * 0.3f)
+            cubicTo(w * 0.39f, h * 0.16f, w * 0.61f, h * 0.16f, w * 0.61f, h * 0.3f)
+            lineTo(w * 0.61f, h * 0.55f)
         }
         drawPath(shackle, color = color, style = s)
-        drawCircle(color = color, radius = 2.0f * density, center = Offset(w * 0.5f, h * 0.73f))
+        drawCircle(color = color, radius = 1.6f * density, center = Offset(w * 0.5f, h * 0.73f))
     }
 }
 
 @Composable
 private fun CmdIconEngineStart(color: Color) {
     Canvas(modifier = Modifier.height(24.dp).width(24.dp)) {
-        val w = size.width; val h = size.height; val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        // 外圆
-        drawCircle(color = color, radius = w * 0.4f, center = Offset(w * 0.5f, h * 0.5f), style = s)
-        // 三角形播放符号
-        val triangle = Path().apply {
-            moveTo(w * 0.42f, h * 0.35f)
-            lineTo(w * 0.65f, h * 0.5f)
-            lineTo(w * 0.42f, h * 0.65f)
-            close()
-        }
-        drawPath(triangle, color = color, style = s)
+        val w = size.width; val h = size.height
+        val s = Stroke(2.0f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // START 按钮：圆形外环（参考图实心圆环）
+        drawCircle(color = color, radius = w * 0.42f, center = Offset(w * 0.5f, h * 0.5f), style = s)
+        // 内部钥匙/启动图形：上弧 + 竖线（电源符号）
+        drawArc(color = color, startAngle = 215f, sweepAngle = 110f, useCenter = false,
+            topLeft = Offset(w * 0.41f, h * 0.28f), size = Size(w * 0.18f, h * 0.22f), style = s)
+        drawLine(color = color, start = Offset(w * 0.5f, h * 0.37f), end = Offset(w * 0.5f, h * 0.55f), strokeWidth = 2.0f * density, cap = StrokeCap.Round)
     }
 }
 
 @Composable
 private fun CmdIconEngineStop(color: Color) {
     Canvas(modifier = Modifier.height(24.dp).width(24.dp)) {
-        val w = size.width; val h = size.height; val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        drawCircle(color = color, radius = w * 0.4f, center = Offset(w * 0.5f, h * 0.5f), style = s)
-        // 方形停止
-        val square = Path().apply {
-            moveTo(w * 0.38f, h * 0.38f)
-            lineTo(w * 0.62f, h * 0.38f)
-            lineTo(w * 0.62f, h * 0.62f)
-            lineTo(w * 0.38f, h * 0.62f)
-            close()
-        }
-        drawPath(square, color = color, style = s)
+        val w = size.width; val h = size.height
+        val s = Stroke(2.0f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        drawCircle(color = color, radius = w * 0.42f, center = Offset(w * 0.5f, h * 0.5f), style = s)
+        drawArc(color = color, startAngle = 215f, sweepAngle = 110f, useCenter = false,
+            topLeft = Offset(w * 0.41f, h * 0.28f), size = Size(w * 0.18f, h * 0.22f), style = s)
+        drawLine(color = color, start = Offset(w * 0.5f, h * 0.37f), end = Offset(w * 0.5f, h * 0.55f), strokeWidth = 2.0f * density, cap = StrokeCap.Round)
+        // 底部停止横杠
+        drawLine(color = color, start = Offset(w * 0.35f, h * 0.85f), end = Offset(w * 0.65f, h * 0.85f), strokeWidth = 2.0f * density, cap = StrokeCap.Round)
     }
 }
 
 @Composable
 private fun CmdIconWindowUp(color: Color) {
     Canvas(modifier = Modifier.height(24.dp).width(24.dp)) {
-        val w = size.width; val h = size.height; val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        // 车窗矩形
+        val w = size.width; val h = size.height
+        val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // 车窗框（参考图：圆角矩形窗框）
         val rect = Path().apply {
-            moveTo(w * 0.15f, h * 0.2f)
-            lineTo(w * 0.85f, h * 0.2f)
-            lineTo(w * 0.85f, h * 0.85f)
-            lineTo(w * 0.15f, h * 0.85f)
+            moveTo(w * 0.18f, h * 0.24f)
+            lineTo(w * 0.82f, h * 0.24f)
+            lineTo(w * 0.82f, h * 0.84f)
+            lineTo(w * 0.18f, h * 0.84f)
             close()
         }
         drawPath(rect, color = color, style = s)
-        // 向上箭头
+        // 窗框竖梁
+        drawLine(color = color, start = Offset(w * 0.5f, h * 0.24f), end = Offset(w * 0.5f, h * 0.84f), strokeWidth = 1.8f * density, cap = StrokeCap.Round)
+        // 左侧窗内：上箭头
         val arrow = Path().apply {
-            moveTo(w * 0.5f, h * 0.35f)
-            lineTo(w * 0.5f, h * 0.65f)
-            moveTo(w * 0.38f, h * 0.45f)
-            lineTo(w * 0.5f, h * 0.35f)
-            lineTo(w * 0.62f, h * 0.45f)
+            moveTo(w * 0.32f, h * 0.38f)
+            lineTo(w * 0.32f, h * 0.62f)
+            moveTo(w * 0.25f, h * 0.48f)
+            lineTo(w * 0.32f, h * 0.38f)
+            lineTo(w * 0.39f, h * 0.48f)
         }
         drawPath(arrow, color = color, style = s)
     }
@@ -1003,26 +1007,86 @@ private fun CmdIconWindowUp(color: Color) {
 @Composable
 private fun CmdIconWindowDown(color: Color) {
     Canvas(modifier = Modifier.height(24.dp).width(24.dp)) {
-        val w = size.width; val h = size.height; val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val w = size.width; val h = size.height
+        val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
         val rect = Path().apply {
-            moveTo(w * 0.15f, h * 0.2f)
-            lineTo(w * 0.85f, h * 0.2f)
-            lineTo(w * 0.85f, h * 0.85f)
-            lineTo(w * 0.15f, h * 0.85f)
+            moveTo(w * 0.18f, h * 0.24f)
+            lineTo(w * 0.82f, h * 0.24f)
+            lineTo(w * 0.82f, h * 0.84f)
+            lineTo(w * 0.18f, h * 0.84f)
             close()
         }
         drawPath(rect, color = color, style = s)
+        drawLine(color = color, start = Offset(w * 0.5f, h * 0.24f), end = Offset(w * 0.5f, h * 0.84f), strokeWidth = 1.8f * density, cap = StrokeCap.Round)
         val arrow = Path().apply {
-            moveTo(w * 0.5f, h * 0.65f)
-            lineTo(w * 0.5f, h * 0.35f)
-            moveTo(w * 0.38f, h * 0.55f)
-            lineTo(w * 0.5f, h * 0.65f)
-            lineTo(w * 0.62f, h * 0.55f)
+            moveTo(w * 0.32f, h * 0.62f)
+            lineTo(w * 0.32f, h * 0.38f)
+            moveTo(w * 0.25f, h * 0.52f)
+            lineTo(w * 0.32f, h * 0.62f)
+            lineTo(w * 0.39f, h * 0.52f)
         }
         drawPath(arrow, color = color, style = s)
     }
 }
 
+@Composable
+private fun CmdIconTrunk(color: Color) {
+    Canvas(modifier = Modifier.height(24.dp).width(24.dp)) {
+        val w = size.width; val h = size.height
+        val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // 参考图：尾门后视图 —— 圆角方框 + 内部掀盖弧 + 底部横线
+        // 尾门外框
+        val body = Path().apply {
+            moveTo(w * 0.14f, h * 0.26f)
+            lineTo(w * 0.86f, h * 0.26f)
+            lineTo(w * 0.86f, h * 0.9f)
+            lineTo(w * 0.14f, h * 0.9f)
+            close()
+        }
+        drawPath(body, color = color, style = s)
+        // 内部：后备箱盖掀起弧线（上拱）
+        drawArc(color = color, startAngle = 200f, sweepAngle = 140f, useCenter = false,
+            topLeft = Offset(w * 0.28f, h * 0.3f), size = Size(w * 0.44f, h * 0.36f), style = s)
+        // 中部横线（尾门分隔）
+        drawLine(color = color, start = Offset(w * 0.14f, h * 0.52f), end = Offset(w * 0.86f, h * 0.52f), strokeWidth = 1.8f * density, cap = StrokeCap.Round)
+    }
+}
+
+@Composable
+private fun CmdIconSearch(color: Color) {
+    Canvas(modifier = Modifier.height(24.dp).width(24.dp)) {
+        val w = size.width; val h = size.height
+        val s = Stroke(1.8f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // 参考图：寻车 = 汽车侧视 + 信号波
+        // 汽车轮廓（侧视，车头朝左）
+        val car = Path().apply {
+            moveTo(w * 0.12f, h * 0.52f)
+            lineTo(w * 0.22f, h * 0.36f)
+            cubicTo(w * 0.26f, h * 0.3f, w * 0.36f, h * 0.3f, w * 0.42f, h * 0.34f)
+            lineTo(w * 0.5f, h * 0.34f)
+            cubicTo(w * 0.55f, h * 0.28f, w * 0.66f, h * 0.28f, w * 0.72f, h * 0.34f)
+            lineTo(w * 0.78f, h * 0.4f)
+            lineTo(w * 0.86f, h * 0.52f)
+            lineTo(w * 0.86f, h * 0.62f)
+            lineTo(w * 0.78f, h * 0.62f)
+            // 右后轮
+            cubicTo(w * 0.78f, h * 0.72f, w * 0.68f, h * 0.72f, w * 0.68f, h * 0.62f)
+            lineTo(w * 0.3f, h * 0.62f)
+            // 左前轮
+            cubicTo(w * 0.3f, h * 0.72f, w * 0.2f, h * 0.72f, w * 0.2f, h * 0.62f)
+            lineTo(w * 0.12f, h * 0.62f)
+            close()
+        }
+        drawPath(car, color = color, style = s)
+        // 车窗线
+        drawLine(color = color, start = Offset(w * 0.28f, h * 0.4f), end = Offset(w * 0.46f, h * 0.4f), strokeWidth = 1.4f * density, cap = StrokeCap.Round)
+        // 信号波（车顶向上扩散）
+        drawArc(color = color, startAngle = -70f, sweepAngle = 50f, useCenter = false,
+            topLeft = Offset(w * 0.42f, h * 0.08f), size = Size(w * 0.2f, h * 0.24f), style = s)
+        drawArc(color = color, startAngle = -65f, sweepAngle = 40f, useCenter = false,
+            topLeft = Offset(w * 0.36f, h * 0.0f), size = Size(w * 0.32f, h * 0.34f), style = s)
+    }
+}
 /**
  * 玻璃风格 Switch 组件。
  * 开启时背景为半透明白+前景色滑块，带轻微的玻璃模糊质感。
@@ -1214,14 +1278,16 @@ private fun CommandIconRow(
 ) {
     val adaptive = LocalAdaptiveTextColors.current
     // 命令名称 → Canvas 图标映射
-    val cmdIcons: Map<String, @Composable (Color) -> Unit> = mapOf(
-        "解锁" to { CmdIconUnlock(it) },
-        "锁车" to { CmdIconLock(it) },
-        "引擎启动" to { CmdIconEngineStart(it) },
-        "引擎关闭" to { CmdIconEngineStop(it) },
-        "车窗开" to { CmdIconWindowUp(it) },
-        "车窗关" to { CmdIconWindowDown(it) }
-    )
+    val cmdIcons: Map<String, Int> = mapOf(
+        "解锁" to R.drawable.ic_cmd_unlock_thin,
+        "锁车" to R.drawable.ic_cmd_lock_thin,
+        "引擎启动" to R.drawable.ic_command_engine_on_28_vw,
+        "引擎关闭" to R.drawable.ic_command_engine_off_28_vw,
+        "车窗开" to R.drawable.ic_command_window_on_28_vw,
+        "车窗关" to R.drawable.ic_command_window_off_28_vw,
+        "开后备箱" to R.drawable.ic_command_trunk_on_28_vw,
+        "寻车" to R.drawable.ic_command_search_on_28_vw
+)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1242,10 +1308,15 @@ private fun CommandIconRow(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                val icon = cmdIcons[cmd.name]
-                if (icon != null) {
+                val iconRes = cmdIcons[cmd.name]
+                if (iconRes != null) {
                     Box(modifier = Modifier.height(24.dp).width(24.dp), contentAlignment = Alignment.Center) {
-                        icon(fg)
+                        Icon(
+                            painter = painterResource(id = iconRes),
+                            contentDescription = cmd.name,
+                            tint = fg,
+                            modifier = Modifier.height(22.dp).width(22.dp)
+                        )
                     }
                 } else {
                     Spacer(Modifier.height(22.dp))

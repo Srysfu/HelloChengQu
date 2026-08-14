@@ -648,6 +648,8 @@ class MainHook : IXposedHookLoadPackage {
         const val CMD_ENGINE_OFF = 0x2a    // 42 引擎关闭
         const val CMD_WINDOW_OPEN = 0x33   // 51 车窗开
         const val CMD_WINDOW_CLOSE = 0x34  // 52 车窗关
+        const val CMD_TRUNK_OPEN = 0x1f    // 31 开后备箱（仅 supportTrunk 车型支持）
+        const val CMD_SEARCH = 0x3d        // 61 寻车/声光寻车（仅 supportSearch 车型支持）
 
         /** 触发命令（需在 com.ingeek.nokey 进程内、且持有目标 classLoader 时调用） */
         fun call(classLoader: ClassLoader?, commandCode: Int): Boolean {
