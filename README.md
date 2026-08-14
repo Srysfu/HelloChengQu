@@ -7,7 +7,7 @@
 [![Android](https://img.shields.io/badge/Android-14%2B-34A853?style=flat&logo=android&logoColor=white)](https://developer.android.com/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?style=flat&logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![LSPosed](https://img.shields.io/badge/LSPosed-1.9%2B-FF6B00?style=flat)](https://github.com/LSPosed/LSPosed)
-[![Release](https://img.shields.io/badge/release-v1.0.1-0366D6?style=flat)](https://github.com/Srysfu/HelloChengQu/releases/tag/v1.0.1)
+[![Release](https://img.shields.io/badge/release-v1.2-0366D6?style=flat)](https://github.com/Srysfu/HelloChengQu/releases/tag/v1.2)
 
 🌐 [English](#english) &nbsp;|&nbsp; [中文](#中文)
 
@@ -83,6 +83,16 @@ All three bypasses are implemented as pure Hook artifacts — no APK repackaging
 | Redmi Note 10 Pro | HyperOS (MIUI) | 14 | Doze-mode broadcast recovery via ACK retry | ✅ |
 
 > Verification was performed on a production device under real-world conditions — screen-off, cgroup-frozen, with no USB debugging connection.
+
+---
+
+## Features
+
+- **8 Vehicle Commands** — Unlock, lock, engine start/stop, window open/close, trunk open, vehicle search
+- **Rich Wake Word Vocabulary** — Supports casual spoken phrases beyond rigid command syntax
+- **Official Icon Integration** — Extracted from ChengQu APK for consistent UI styling
+- **ACK-Confirmed Delivery** — Multi-stage retry with escalating wake-up strategy
+- **Cgroup Freeze Recovery** — Root-assisted process revival for locked-screen reliability
 
 ---
 
@@ -182,6 +192,16 @@ The authors assume no liability for misuse. This is a tool — what you build wi
 ```
 
 双进程，一条通道。模块同时 Hook 对话的双方——负责*听*的语音助手和负责*做*的车控应用——即使 Android 省电 cgroup 冻结了接收端，也能确保指令送达。
+
+---
+
+## 功能特性
+
+- **8 项车控命令** — 解锁、锁车、引擎启停、车窗开关、开后备箱、寻车
+- **丰富唤醒词表** — 支持口语化表达，不限于僵化的命令语法
+- **官方图标适配** — 从乘趣 APK 提取，保持 UI 风格一致
+- **ACK 确认投递** — 多级重试配合递增唤醒策略
+- **Cgroup 冻结恢复** — Root 辅助进程唤醒，锁屏场景可靠送达
 
 ---
 
