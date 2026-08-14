@@ -10,6 +10,12 @@
 
 ---
 
+## 截图
+
+<img src="screenshot.jpg" width="300" alt="HelloChengQu 界面">
+
+---
+
 ## 快速开始
 
 ### 安装
